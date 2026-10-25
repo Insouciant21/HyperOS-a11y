@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "com.insou.autoa11y"
-        minSdk = 29
+        minSdk = 33
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
@@ -44,6 +44,9 @@ dependencies {
     implementation(libs.lifecycle.viewmodel.compose)
 
     implementation(libs.miuix.ui)
+    implementation(libs.miuix.blur)
+
+    implementation(libs.coil.compose)
 
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)

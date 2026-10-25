@@ -5,7 +5,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -145,6 +147,7 @@ fun A11yScreen() {
                     }
                 }
             }
+            item { Spacer(modifier = Modifier.height(GlassNavBottomPadding)) }
         }
     }
 }
@@ -159,6 +162,7 @@ private fun ServiceRow(
     BasicComponent(
         enabled = !busy,
         onClick = { onToggle(!checked) },
+        startAction = { AppIcon(packageName = entry.packageName) },
         content = {
             Text(text = entry.label)
             Text(

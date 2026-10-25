@@ -1,7 +1,9 @@
 package com.insou.autoa11y.ui
 
 import android.content.ComponentName
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
@@ -151,6 +153,7 @@ fun PermsScreen() {
                         BasicComponent(
                             enabled = busyKey == null,
                             onClick = { toggleInstallPerm(app.packageName, app.packageName !in allow) },
+                            startAction = { AppIcon(packageName = app.packageName) },
                             content = {
                                 Text(text = app.label)
                                 Text(
@@ -178,6 +181,7 @@ fun PermsScreen() {
                         BasicComponent(
                             enabled = busyKey == null,
                             onClick = { toggleListener(entry, !on) },
+                            startAction = { AppIcon(packageName = entry.packageName) },
                             content = {
                                 Text(text = entry.label)
                                 Text(
@@ -193,5 +197,7 @@ fun PermsScreen() {
                 }
             }
         }
+
+        item { Spacer(modifier = Modifier.height(GlassNavBottomPadding)) }
     }
 }
