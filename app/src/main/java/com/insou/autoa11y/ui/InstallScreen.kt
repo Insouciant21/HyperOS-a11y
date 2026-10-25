@@ -6,7 +6,9 @@ import android.os.ParcelFileDescriptor
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -89,7 +91,7 @@ fun InstallScreen() {
                 val output = withContext(Dispatchers.IO) {
                     val pfd = ParcelFileDescriptor.open(s.cacheFile, ParcelFileDescriptor.MODE_READ_ONLY)
                     val out = if (s.kind == ApkKind.SPLIT_BUNDLE) {
-                        ShellGateway.call { it.installSplits(pfd, flags()) }
+                        ShellGateway.call { it.installSplits(pfd, s.info?.packageName.orEmpty(), flags()) }
                     } else {
                         ShellGateway.call { it.installApk(pfd, flags()) }
                     }
@@ -146,7 +148,12 @@ fun InstallScreen() {
         staged?.let { s ->
             val kindLabel = when {
                 s.kind == ApkKind.SINGLE_APK -> "单 APK"
-                s.kind == ApkKind.SPLIT_BUNDLE -> "拆分包（${s.info?.splits?.size ?: "?"} 个 apk）"
+                s.kind == ApkKind.SPLIT_BUNDLE -> buildString {
+                    append("拆分包（${s.info?.splits?.size ?: "?"} 个 apk）")
+                    if ((s.info?.obbCount ?: 0) > 0) append(" · 含 ${s.info?.obbCount} 个 OBB")
+                }
+
+                s.kind == ApkKind.ENCRYPTED -> "加密 apkm（暂不支持）"
                 else -> "未知格式"
             }
             Card(modifier = Modifier.padding(vertical = 4.dp)) {
@@ -188,7 +195,7 @@ fun InstallScreen() {
 
             Button(
                 onClick = { install() },
-                enabled = !installing && s.kind != ApkKind.UNKNOWN,
+                enabled = !installing && s.kind != ApkKind.UNKNOWN && s.kind != ApkKind.ENCRYPTED,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 12.dp),
@@ -203,6 +210,8 @@ fun InstallScreen() {
                 BasicComponent(content = { Text(text = it) })
             }
         }
+
+        Spacer(modifier = Modifier.height(GlassNavBottomPadding))
     }
 }
 

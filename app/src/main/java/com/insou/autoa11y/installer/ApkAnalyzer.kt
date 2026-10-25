@@ -1,11 +1,10 @@
 package com.insou.autoa11y.installer
 
 import android.content.Context
-import android.content.pm.PackageManager
 import java.io.File
 import java.util.zip.ZipFile
 
-enum class ApkKind { SINGLE_APK, SPLIT_BUNDLE, UNKNOWN }
+enum class ApkKind { SINGLE_APK, SPLIT_BUNDLE, ENCRYPTED, UNKNOWN }
 
 data class PkgInfo(
     val appName: String,
@@ -13,6 +12,7 @@ data class PkgInfo(
     val versionName: String?,
     val versionCode: Long,
     val splits: List<String>,
+    val obbCount: Int,
 )
 
 object ApkAnalyzer {
@@ -22,14 +22,15 @@ object ApkAnalyzer {
         if (!file.exists() || file.length() < 4) return ApkKind.UNKNOWN
         return try {
             ZipFile(file).use { zf ->
-                val apkEntries = zf.entries().asSequence()
-                    .filter { !it.isDirectory && it.name.endsWith(".apk") }
-                    .map { it.name }
+                val names = zf.entries().asSequence()
+                    .filter { !it.isDirectory }
+                    .map { it.name.substringAfterLast('/') }
                     .toList()
-                val hasManifest = zf.getEntry("AndroidManifest.xml") != null
                 when {
-                    apkEntries.isNotEmpty() -> ApkKind.SPLIT_BUNDLE
-                    hasManifest -> ApkKind.SINGLE_APK
+                    // APKMirror marker present in (encrypted) .apkm bundles
+                    names.any { it == "stamp-cert-signed" } -> ApkKind.ENCRYPTED
+                    names.any { it.endsWith(".apk") } -> ApkKind.SPLIT_BUNDLE
+                    names.any { it == "AndroidManifest.xml" } -> ApkKind.SINGLE_APK
                     else -> ApkKind.UNKNOWN
                 }
             }
@@ -38,35 +39,42 @@ object ApkAnalyzer {
         }
     }
 
+    private fun isConfigSplit(name: String): Boolean =
+        name.startsWith("split_") || name.startsWith("config.")
+
     /**
-     * Parse package info. For bundles, extracts base.apk (or the first apk entry)
-     * next to [file] for parsing.
+     * Parse package info from the bundle's main apk. For .xapk the main apk is
+     * named <pkg>.apk rather than base.apk; pick the first non-config entry.
      */
     fun parse(context: Context, file: File, kind: ApkKind): PkgInfo? {
         return when (kind) {
-            ApkKind.SINGLE_APK -> parseApk(context, file, emptyList())
+            ApkKind.SINGLE_APK -> parseApk(context, file, emptyList(), 0)
             ApkKind.SPLIT_BUNDLE -> {
                 ZipFile(file).use { zf ->
                     val names = zf.entries().asSequence()
-                        .filter { !it.isDirectory && it.name.endsWith(".apk") }
+                        .filter { !it.isDirectory }
                         .map { it.name.substringAfterLast('/') }
                         .toList()
-                    val baseName = names.firstOrNull { it == "base.apk" } ?: names.firstOrNull()
+                    val apks = names.filter { it.endsWith(".apk") }.sorted()
+                    val obbCount = names.count { it.endsWith(".obb") }
+                    val baseName = apks.firstOrNull { it == "base.apk" }
+                        ?: apks.firstOrNull { !isConfigSplit(it) }
+                        ?: apks.firstOrNull()
                         ?: return null
                     val baseFile = File(file.parentFile, "parse_base.apk")
                     zf.getInputStream(zf.getEntry(names.first { it.substringAfterLast('/') == baseName }))
                         .use { input -> baseFile.outputStream().use { input.copyTo(it) } }
-                    val info = parseApk(context, baseFile, names.sorted())
+                    val info = parseApk(context, baseFile, apks, obbCount)
                     baseFile.delete()
                     info
                 }
             }
 
-            ApkKind.UNKNOWN -> null
+            else -> null
         }
     }
 
-    private fun parseApk(context: Context, apk: File, splits: List<String>): PkgInfo? {
+    private fun parseApk(context: Context, apk: File, splits: List<String>, obbCount: Int): PkgInfo? {
         val pm = context.packageManager
         val pkg = pm.getPackageArchiveInfo(apk.absolutePath, 0) ?: return null
         val appName = try {
@@ -81,6 +89,7 @@ object ApkAnalyzer {
             versionName = pkg.versionName,
             versionCode = pkg.longVersionCode,
             splits = splits,
+            obbCount = obbCount,
         )
     }
 }

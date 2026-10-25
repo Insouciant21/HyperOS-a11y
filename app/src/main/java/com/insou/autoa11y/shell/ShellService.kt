@@ -61,7 +61,7 @@ class ShellService : IShellService.Stub() {
         }
     }
 
-    override fun installSplits(bundleZip: ParcelFileDescriptor?, flags: Int): String {
+    override fun installSplits(bundleZip: ParcelFileDescriptor?, pkgName: String, flags: Int): String {
         if (bundleZip == null) return "Error: null fd"
         val dir = File("/data/local/tmp/a11ykit_splits_${System.currentTimeMillis()}")
         val zip = File(dir.parentFile, dir.name + ".zip")
@@ -73,7 +73,6 @@ class ShellService : IShellService.Stub() {
             try {
                 val entries = zf.entries().asSequence()
                     .filter { !it.isDirectory && it.name.endsWith(".apk") }
-                    .sortedBy { if (it.name == "base.apk" || it.name.endsWith("/base.apk")) 0 else 1 }
                     .toList()
                 if (entries.isEmpty()) return "Error: no apk entries in bundle"
 
@@ -95,7 +94,22 @@ class ShellService : IShellService.Stub() {
                         return "Error writing $name:\n$write"
                     }
                 }
-                return sh("pm install-commit $sessionId").ifBlank { "Success (empty output)" }
+                val commit = sh("pm install-commit $sessionId").ifBlank { "Success (empty output)" }
+
+                // xapk: copy *.obb into /sdcard/Android/obb/<pkg>/
+                val obbEntries = zf.entries().asSequence()
+                    .filter { !it.isDirectory && it.name.endsWith(".obb") }
+                    .toList()
+                if (obbEntries.isNotEmpty() && pkgName.isNotBlank()) {
+                    val obbDir = File("/sdcard/Android/obb/${pkgName.trim()}")
+                    obbDir.mkdirs()
+                    for (e in obbEntries) {
+                        val out = File(obbDir, e.name.substringAfterLast('/'))
+                        zf.getInputStream(e).use { input -> out.outputStream().use { input.copyTo(it) } }
+                    }
+                    return "$commit\nOBB: ${obbEntries.size} 个已复制到 ${obbDir.absolutePath}"
+                }
+                return commit
             } finally {
                 zf.close()
             }

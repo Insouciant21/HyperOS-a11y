@@ -17,9 +17,11 @@ interface IShellService {
 
     String setAppOps(String pkg, String op, String mode) = 5;
 
-    // SAI-style bundle (.apks/.apkm/.xapk): zip containing base.apk + split_*.apk.
-    // Installs via install-create / install-write xN / install-commit.
-    String installSplits(in ParcelFileDescriptor bundleZip, int flags) = 6;
+    // SAI-style bundle (.apks/.apkm/.xapk): zip containing base.apk + split_*.apk
+    // (xapk: main apk + config splits + optional .obb). Installs via
+    // install-create / install-write xN / install-commit; copies *.obb entries
+    // to /sdcard/Android/obb/<pkgName>/ when pkgName is not empty.
+    String installSplits(in ParcelFileDescriptor bundleZip, String pkgName, int flags) = 6;
 
     // appops query-op <op> <mode>: one package name per line.
     String queryAppOps(String op, String mode) = 7;
