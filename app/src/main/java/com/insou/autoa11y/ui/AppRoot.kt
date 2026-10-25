@@ -1,9 +1,11 @@
 package com.insou.autoa11y.ui
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -13,16 +15,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.insou.autoa11y.shell.ShellGateway
 import com.insou.autoa11y.shell.ShellState
+import com.insou.autoa11y.ui.glass.glassSource
+import com.insou.autoa11y.ui.glass.liquidGlass
+import com.insou.autoa11y.ui.glass.rememberGlassBackdrop
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.NavigationBar
@@ -30,17 +40,11 @@ import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.blur.ProgressiveBlur
-import top.yukonga.miuix.kmp.blur.drawBackdrop
-import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.progressiveBlur
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private class Tab(val label: String, val icon: ImageVector)
 
-/** Bottom clearance so scrollable content can rest above the glass nav bar
- *  (content still extends under it, feeding the blur). */
+/** Bottom clearance so scrollable content can rest above the glass pill
+ *  (content still extends under it, feeding the lens). */
 val GlassNavBottomPadding = 132.dp
 
 @Composable
@@ -52,18 +56,26 @@ fun AppRoot() {
     )
     var selected by rememberSaveable { mutableIntStateOf(0) }
 
-    // Liquid glass: the content layer is captured, the bottom bar blurs it
-    // progressively (frosted at the bottom edge, clear at the top edge).
-    val backdrop = rememberLayerBackdrop()
+    // -style liquid glass lens on a floating pill bar.
+    val dark = isSystemInDarkTheme()
+    val glassTint = if (dark) Color(0xFF20222A).copy(alpha = 0.62f)
+    else Color(0xFFFFFFFF).copy(alpha = 0.45f)
+
+    val backdrop = rememberGlassBackdrop()
+    var rootPos by remember { mutableStateOf(Offset.Zero) }
+    var panePos by remember { mutableStateOf<Offset?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
+            modifier = Modifier
+                .fillMaxSize()
+                .glassSource(backdrop)
+                .onGloballyPositioned { rootPos = it.positionInRoot() },
             topBar = { TopAppBar(title = "A11yKit") },
         ) { padding ->
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .layerBackdrop(backdrop)
                     .padding(top = padding.calculateTopPadding())
                     .padding(horizontal = 16.dp),
             ) {
@@ -80,15 +92,20 @@ fun AppRoot() {
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .drawBackdrop(
+                .navigationBarsPadding()
+                .padding(horizontal = 18.dp, vertical = 8.dp)
+                .onGloballyPositioned { panePos = it.positionInRoot() }
+                .liquidGlass(
                     backdrop = backdrop,
-                    shape = { RectangleShape },
-                    effects = { progressiveBlur(radiusX = 36f, gradient = ProgressiveBlur.Bottom) },
+                    paneOffsetInRoot = { panePos ?: Offset.Zero },
+                    rootOffsetInRoot = { rootPos },
+                    tint = glassTint,
                 ),
         ) {
             NavigationBar(
-                color = MiuixTheme.colorScheme.surface.copy(alpha = 0.55f),
+                color = Color.Transparent,
                 showDivider = false,
+                defaultWindowInsetsPadding = false,
             ) {
                 tabs.forEachIndexed { i, tab ->
                     NavigationBarItem(
