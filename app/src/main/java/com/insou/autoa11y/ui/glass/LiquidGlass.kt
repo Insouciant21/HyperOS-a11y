@@ -39,6 +39,11 @@ uniform float uDepth;
 uniform float uSat;
 uniform float uRim;
 uniform float4 uTint;
+// -measured optics: rim dark line width / dispersion spread / part reach / part hold (px)
+uniform float uLine;
+uniform float uDisp;
+uniform float uPartReach;
+uniform float uPartHold;
 
 float sdRoundBox(float2 p, float2 b, float r) {
     float2 q = abs(p) - b + r;
@@ -52,18 +57,28 @@ float4 main(float2 fragCoord) {
     float2 p = uv - cs;
     float d = sdRoundBox(p, b, uCorner);
     float edge = -d;
-    float t = 1.0 - smoothstep(0.0, uBevel, edge);
 
     float eps = 1.0;
     float dx = sdRoundBox(p + float2(eps, 0.0), b, uCorner) - d;
     float dy = sdRoundBox(p + float2(0.0, eps), b, uCorner) - d;
     float2 n = normalize(float2(dx, dy) + 1e-5);
 
-    // Refraction: near the rim, sample outward — the lens pulls its
-    // surroundings inward, bending content around the edge.
-    float bend = pow(t, 1.5);
-    float2 src = uv + n * bend * uDepth;
-    float3 col = content.eval(src).rgb;
+    // Banded refraction, as measured on iOS 27: nothing at the rim, full
+    // depth a bevel in, easing off again toward the middle — the center of
+    // the pane keeps a slight bend instead of staying flat.
+    float halfMinor = min(cs.x, cs.y);
+    float bend = smoothstep(0.0, uBevel, edge)
+        * (1.0 - smoothstep(uBevel, halfMinor, edge));
+    vec2 src = uv + n * bend * uDepth;
+
+    // Chromatic dispersion: near the rim the channels part along the normal,
+    // starting to close again past uPartHold.
+    float part = 1.0 - smoothstep(uPartHold, uPartReach, edge);
+    float3 col = float3(
+        content.eval(src + n * part * uDisp).r,
+        content.eval(src).g,
+        content.eval(src - n * part * uDisp).b
+    );
 
     float l = dot(col, float3(0.299, 0.587, 0.114));
     col = mix(float3(l), col, uSat);
@@ -75,8 +90,8 @@ float4 main(float2 fragCoord) {
     float bottomBias = clamp(0.5 + n.y * 0.5, 0.0, 1.0) * 0.35;
     col += uRim * band * band * (topBias + bottomBias * 0.5);
 
-    // Hairline darkening right at the edge for definition.
-    col *= 1.0 - 0.10 * smoothstep(2.0, 0.0, edge);
+    // /iOS 27 dark hairline right at the rim (0.67dp, caps at 0.298).
+    col *= 1.0 - 0.298 * (1.0 - smoothstep(0.0, uLine, edge));
     return float4(col, 1.0);
 }
 """
@@ -131,6 +146,10 @@ fun Modifier.liquidGlass(
         shader.setFloatUniform("uSat", saturation)
         shader.setFloatUniform("uRim", rim)
         shader.setFloatUniform("uTint", tintSpec[0], tintSpec[1], tintSpec[2], tintSpec[3])
+        shader.setFloatUniform("uLine", with(density) { 0.67.dp.toPx() })
+        shader.setFloatUniform("uDisp", with(density) { 2.5.dp.toPx() })
+        shader.setFloatUniform("uPartReach", with(density) { 10.dp.toPx() })
+        shader.setFloatUniform("uPartHold", with(density) { 7.dp.toPx() })
 
         val runtime = RenderEffect.createRuntimeShaderEffect(shader, "content")
         val blur = RenderEffect.createBlurEffect(frostPx, frostPx, Shader.TileMode.CLAMP)
