@@ -6,7 +6,8 @@
 
 - **无障碍**：全设备服务列表与开关（shell 原子读-改-写 `enabled_accessibility_services`，绕过 MIUI/HyperOS 十秒盾与受限设置）；被系统自动关闭后 ~1s 内自动恢复（看门狗，10 分钟窗口限流 3 次，连续 3 败自动放弃）
 - **安装**：SAF 选择 `.apk / .apks / .apkm / .xapk / .apk.1`，按内容识别格式（非扩展名）；单 APK 走 `pm install`，拆分包走 `install-create/write/commit` 多会话；xapk 的 OBB 自动解到 `Android/obb/<pkg>/`；加密 apkm 识别并提示不支持；五项安装选项（-r/-t/-d/-g/绕过低 targetSdk 拦截）
-- **权限**：通知使用权（`cmd notification allow_listener`）与未知应用安装权（`appops REQUEST_INSTALL_PACKAGES`，`query-op` 批量拉取状态）全设备列表开关
+- **安装权限**：未知应用安装权（`appops REQUEST_INSTALL_PACKAGES`，`query-op` 批量拉取状态）全设备列表开关，含本应用
+- **通知权限**：通知使用权（`cmd notification allow_listener`）全设备列表开关
 
 ## 前提
 
