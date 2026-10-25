@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -52,7 +54,8 @@ fun AppRoot() {
     val tabs = listOf(
         Tab("无障碍", Icons.Filled.Home),
         Tab("安装", Icons.Filled.Add),
-        Tab("权限", Icons.Filled.Settings),
+        Tab("安装权限", Icons.Filled.Lock),
+        Tab("通知权限", Icons.Filled.Notifications),
     )
     var selected by rememberSaveable { mutableIntStateOf(0) }
 
@@ -83,7 +86,8 @@ fun AppRoot() {
                 when (selected) {
                     0 -> A11yScreen()
                     1 -> InstallScreen()
-                    else -> PermsScreen()
+                    2 -> InstallPermsScreen()
+                    else -> NotifPermsScreen()
                 }
             }
         }
