@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Home
@@ -49,6 +51,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.insou.autoa11y.shell.ShellGateway
@@ -123,31 +126,22 @@ fun AppRoot() {
             }
         }
 
-        Column(
+        GlassNav(
+            tabs = tabs,
+            selected = selected,
+            onSelect = { selected = it },
+            glassTint = glassTint,
+            glassSaturation = glassSaturation,
+            backdrop = backdrop,
+            rootPos = { rootPos },
+            onGlow = { x, y -> glowCenter = Offset(x, y) },
+            onGlowPower = { glowPower = it },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 18.dp, vertical = 8.dp)
-                .onGloballyPositioned { panePos = it.positionInRoot() }
-                .liquidGlass(
-                    backdrop = backdrop,
-                    paneOffsetInRoot = { panePos ?: Offset.Zero },
-                    rootOffsetInRoot = { rootPos },
-                    tint = glassTint,
-                    saturation = glassSaturation,
-                    glowCenter = { glowCenter },
-                    glowStrength = { glowPower * 0.45f },
-                ),
-        ) {
-            GlassTabRow(
-                tabs = tabs,
-                selected = selected,
-                onSelect = { selected = it },
-                onGlow = { x, y -> glowCenter = Offset(x, y) },
-                onGlowPower = { glowPower = it },
-            )
-        }
+                .padding(horizontal = 18.dp, vertical = 8.dp),
+        )
     }
 }
 
@@ -223,48 +217,45 @@ private const val TRAVEL_K = 380f
 private const val TRAVEL_Z = 0.78f
 
 /**
- *  floating nav bar port: the lens (capsule) position is a
- * spring-driven continuous index. It follows the finger while dragging, goes
- * jelly-wide with speed, springs to the nearest or flung destination on
- * release, ticks haptics when crossing a destination, grows under a press,
- * and feeds a touch glow to the glass shader. Rubber-bands at the ends; a
- * fast release flings at most one destination past the finger.
+ *  floating nav bar full port - the GLASS ITSELF is the traveling
+ * lens: one floating glass pane whose rect (position/size/jelly/lift) is the
+ * spring-driven lens state, refracting whatever sits behind it. Destinations
+ * stay tappable through the row. Follows the finger, rubber-bands at the ends,
+ * flings at most one destination past the finger, ticks haptics when crossing
+ * destinations, grows under a press, and drives a touch glow in the shader.
  */
 @Composable
-private fun GlassTabRow(
+private fun GlassNav(
     tabs: List<Tab>,
     selected: Int,
     onSelect: (Int) -> Unit,
+    glassTint: Color,
+    glassSaturation: Float,
+    backdrop: androidx.compose.ui.graphics.layer.GraphicsLayer,
+    rootPos: () -> Offset,
     onGlow: (Float, Float) -> Unit,
     onGlowPower: (Float) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val view = LocalView.current
     val density = LocalDensity.current
 
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        val tabWidth = maxWidth / tabs.size
+    BoxWithConstraints(modifier = modifier) {
+        val rowWidth = maxWidth
+        val rowHeight = 64.dp
+        val tabWidth = rowWidth / tabs.size
         val tabWidthPx = with(density) { tabWidth.toPx() }
-        val lensBasePx = with(density) { 46.dp.toPx() }
+        val rowHeightPx = with(density) { rowHeight.toPx() }
+        val lensRestPx = with(density) { 46.dp.toPx() }
         val liftGrowthPx = with(density) { 6.dp.toPx() }
 
-        val lensColor = MiuixTheme.colorScheme.primary
         val lens = remember { FcSpring(selected.toFloat()) }
         val lift = remember { FcSpring(0f) }
         val glow = remember { FcSpring(0f) }
         var jelly by remember { mutableFloatStateOf(0f) }
         var liveIndex by remember { mutableIntStateOf(selected) }
-
-        // Push glow center & power to the shader each frame.
-        LaunchedEffect(Unit) {
-            var lastGlow = -1f
-            while (true) {
-                withFrameNanos { }
-                if (glow.value != lastGlow) {
-                    lastGlow = glow.value
-                    onGlowPower(glow.value)
-                }
-            }
-        }
+        var rowPos by remember { mutableStateOf(Offset.Zero) }
+        var glowX by remember { mutableFloatStateOf(-1f) }
 
         // Physics frame loop (three substeps for the stiff follow spring).
         LaunchedEffect(Unit) {
@@ -278,7 +269,6 @@ private fun GlassTabRow(
                         lift.step(dt / 3f)
                         glow.step(dt / 3f)
                     }
-                    // Jelly: stretch with lens speed (index/s), ease back.
                     val jTarget = min(abs(lens.velocity) / 5f, 1f) * 0.30f
                     jelly += (jTarget - jelly) * min(1f, dt * 14f)
                     liveIndex = lens.value.roundToInt().coerceIn(0, tabs.size - 1)
@@ -298,101 +288,126 @@ private fun GlassTabRow(
             }
         }
 
-        Row(
+        // The lens rect (row-local), one source of truth for glass and glow.
+        fun lensLeft(): Float = lens.value * tabWidthPx
+        fun lensWidth(): Float =
+            tabWidthPx * (1f + jelly) + lift.value * liftGrowthPx
+        fun lensHeight(): Float =
+            lensRestPx * (1f - jelly * 0.55f) + lift.value * liftGrowthPx
+
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(64.dp)
-                .drawBehind {
-                    // The traveling lens capsule, jelly-deformed and press-lifted.
-                    val w = tabWidthPx * (1f + jelly) + lift.value * liftGrowthPx
-                    val h = lensBasePx * (1f - jelly * 0.55f) + lift.value * liftGrowthPx
-                    drawRoundRect(
-                        color = lensColor.copy(
-                            alpha = 0.14f + 0.10f * lift.value,
-                        ),
-                        topLeft = Offset(lens.value * tabWidthPx, (size.height - h) / 2f),
-                        size = Size(w, h),
-                        cornerRadius = CornerRadius(h / 2f, h / 2f),
+                .height(rowHeight)
+                .onGloballyPositioned { rowPos = it.positionInRoot() }
+        ) {
+            // The traveling glass pane = the lens itself.
+            Box(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            lensLeft().roundToInt(),
+                            ((rowHeightPx - lensHeight()) / 2f).roundToInt(),
+                        )
+                    }
+                    .size(
+                        with(density) { lensWidth().toDp() },
+                        with(density) { lensHeight().toDp() },
                     )
-                }
-                .pointerInput(tabs.size, tabWidthPx) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        val tracker = VelocityTracker()
-                        tracker.addPosition(down.uptimeMillis, down.position)
-                        var isDrag = false
-                        var crossIndex = positionIndex(down.position.x)
-                            .roundToInt().coerceIn(0, tabs.size - 1)
+                    .liquidGlass(
+                        backdrop = backdrop,
+                        paneOffsetInRoot = {
+                            rowPos + Offset(lensLeft(), (rowHeightPx - lensHeight()) / 2f)
+                        },
+                        rootOffsetInRoot = rootPos,
+                        tint = glassTint,
+                        saturation = glassSaturation,
+                        glowCenter = {
+                            Offset(glowX - lensLeft(), lensHeight() / 2f)
+                        },
+                        glowStrength = { glow.value * 0.45f },
+                    ),
+            )
 
-                        lift.springTo(1f, 340f, 0.85f)
-                        glow.springTo(1f, 260f, 0.9f)
-                        onGlow(down.position.x, size.height / 2f)
-                        lens.springTo(crossIndex.toFloat(), TRAVEL_K, TRAVEL_Z)
+            // Destination slots stay tappable through the row; the live one
+            // reads primary.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(rowHeight)
+                    .pointerInput(tabs.size, tabWidthPx) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val tracker = VelocityTracker()
+                            tracker.addPosition(down.uptimeMillis, down.position)
+                            var isDrag = false
+                            var crossIndex = positionIndex(down.position.x)
+                                .roundToInt().coerceIn(0, tabs.size - 1)
 
-                        val slop = viewConfiguration.touchSlop
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id }
-                                ?: break
-                            if (!change.pressed) break
-                            if (change.positionChange() == Offset.Zero) continue
-                            val pos = change.position
-                            if (!isDrag && abs(pos.x - down.position.x) > slop) isDrag = true
-                            if (isDrag) {
-                                tracker.addPosition(change.uptimeMillis, pos)
-                                onGlow(pos.x, size.height / 2f)
-                                val p = rubber(positionIndex(pos.x))
-                                lens.springTo(p, FOLLOW_K, FOLLOW_Z)
-                                val idx = p.roundToInt().coerceIn(0, tabs.size - 1)
-                                if (idx != crossIndex) {
-                                    crossIndex = idx
-                                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                            lift.springTo(1f, 340f, 0.85f)
+                            glow.springTo(1f, 260f, 0.9f)
+                            glowX = down.position.x
+                            lens.springTo(crossIndex.toFloat(), TRAVEL_K, TRAVEL_Z)
+
+                            val slop = viewConfiguration.touchSlop
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id }
+                                    ?: break
+                                if (!change.pressed) break
+                                if (change.positionChange() == Offset.Zero) continue
+                                val pos = change.position
+                                if (!isDrag && abs(pos.x - down.position.x) > slop) isDrag = true
+                                if (isDrag) {
+                                    tracker.addPosition(change.uptimeMillis, pos)
+                                    glowX = pos.x
+                                    val p = rubber(positionIndex(pos.x))
+                                    lens.springTo(p, FOLLOW_K, FOLLOW_Z)
+                                    val idx = p.roundToInt().coerceIn(0, tabs.size - 1)
+                                    if (idx != crossIndex) {
+                                        crossIndex = idx
+                                        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                    }
                                 }
                             }
-                        }
 
-                        // Fling projection: at most one destination past the finger.
-                        val vx = if (isDrag) tracker.calculateVelocity().x else 0f
-                        val lead = vx / tabWidthPx * 0.12f
-                        val target = (lens.target + lead).roundToInt()
-                            .coerceIn(crossIndex - 1, crossIndex + 1)
-                            .coerceIn(0, tabs.size - 1)
-                        if (target != crossIndex) {
-                            view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                        }
-                        if (target != selected) onSelect(target)
+                            val vx = if (isDrag) tracker.calculateVelocity().x else 0f
+                            val lead = vx / tabWidthPx * 0.12f
+                            val target = (lens.target + lead).roundToInt()
+                                .coerceIn(crossIndex - 1, crossIndex + 1)
+                                .coerceIn(0, tabs.size - 1)
+                            if (target != crossIndex) {
+                                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                            }
+                            if (target != selected) onSelect(target)
 
-                        lens.springTo(target.toFloat(), TRAVEL_K, TRAVEL_Z)
-                        lift.springTo(0f, 300f, 0.9f)
-                        glow.springTo(0f, 90f, 1f)
+                            lens.springTo(target.toFloat(), TRAVEL_K, TRAVEL_Z)
+                            lift.springTo(0f, 300f, 0.9f)
+                            glow.springTo(0f, 90f, 1f)
+                        }
+                    },
+            ) {
+                tabs.forEachIndexed { i, tab ->
+                    val isLive = i == liveIndex
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Icon(
+                            imageVector = tab.icon,
+                            contentDescription = tab.label,
+                            tint = if (isLive) MiuixTheme.colorScheme.primary
+                            else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                        Text(
+                            text = tab.label,
+                            fontSize = 11.sp,
+                            color = if (isLive) MiuixTheme.colorScheme.primary
+                            else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
                     }
-                },
-        ) {
-            tabs.forEachIndexed { i, tab ->
-                val isOn = i == liveIndex
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clickable {
-                            onSelect(i)
-                            lens.springTo(i.toFloat(), TRAVEL_K, TRAVEL_Z)
-                        },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Icon(
-                        imageVector = tab.icon,
-                        contentDescription = tab.label,
-                        tint = if (isOn) MiuixTheme.colorScheme.primary
-                        else MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                    Text(
-                        text = tab.label,
-                        fontSize = 11.sp,
-                        color = if (isOn) MiuixTheme.colorScheme.primary
-                        else MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
                 }
             }
         }
