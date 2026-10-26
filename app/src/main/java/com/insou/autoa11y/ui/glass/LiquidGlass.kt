@@ -115,10 +115,12 @@ fun Modifier.liquidGlass(
     //  / class defaults
     bevel: Dp = 20.dp,
     depth: Dp = 60.dp,
-    // Haze pre-blur sigma applied to the captured backdrop layer
-    // ( pill: blur 0 + haze 0.72 @ sigma 15.6 over the sharp read;
-    // pre-blurring the capture gives a clean gaussian, not tap ghosts).
-    hazeSigma: Dp = 15.6.dp * 0.72f,
+    // Haze pre-blur sigma applied to the captured backdrop layer.
+    // pill: haze 0.72 @ hazeBlur 15.6 — but that sigma is in the
+    // DOWNSAMPLED haze texture's pixels (captured at ~1/3 texelsPerDp), i.e.
+    // ~5 screen dp. Applying 15.6 at full resolution over-blurs into an
+    // opaque-looking wash.
+    hazeSigma: Dp = 4.5.dp,
     rim: Float = 0.35f,
     rimWidth: Dp = 4.5.dp,
     saturation: Float = 1.925f,
