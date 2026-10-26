@@ -33,7 +33,7 @@ object ShellGateway {
             ComponentName(appContext.packageName, ShellService::class.java.name)
         )
             .tag("a11y_shell")
-            .version(4)
+            .version(5)
             .processNameSuffix("shell")
     }
 

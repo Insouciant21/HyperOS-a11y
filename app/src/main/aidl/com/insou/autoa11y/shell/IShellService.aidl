@@ -26,5 +26,9 @@ interface IShellService {
     // appops query-op <op> <mode>: one package name per line.
     String queryAppOps(String op, String mode) = 7;
 
+    // dumpsys package parsing: packages declaring REQUEST_INSTALL_PACKAGES,
+    // one "pkg" (brackets stripped) per line. Reliable across OEM API quirks.
+    String queryInstallRequesters() = 8;
+
     void destroy() = 16777114;
 }

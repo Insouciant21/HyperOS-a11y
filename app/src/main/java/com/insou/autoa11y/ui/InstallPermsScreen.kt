@@ -54,7 +54,29 @@ fun InstallPermsScreen() {
     }
 
     LaunchedEffect(Unit) {
-        installApps = DeviceStore.installRequesters(context)
+        // PackageManager per-package query (empty on some OEMs, e.g. HyperOS 3),
+        // merged with a shell-side dumpsys parse when Shizuku is available.
+        val pm = context.packageManager
+        val merged = DeviceStore.installRequesters(context)
+            .associateBy { it.packageName }
+            .toMutableMap()
+        try {
+            ShellGateway.call { it.queryInstallRequesters() }
+                .lineSequence()
+                .map { it.trim() }
+                .filter { it.contains('.') }
+                .forEach { pkg ->
+                    if (pkg !in merged) {
+                        val label = runCatching {
+                            pm.getApplicationInfo(pkg, 0).loadLabel(pm).toString()
+                        }.getOrNull() ?: pkg
+                        merged[pkg] = AppEntry(label, pkg)
+                    }
+                }
+        } catch (e: Throwable) {
+            error = e.message ?: e.toString()
+        }
+        installApps = merged.values.sortedBy { it.label.lowercase() }
         reloadAllowSet()
         ownInstallOn = try {
             ShellGateway.call { it.getAppOps(context.packageName, OP_INSTALL) }.contains("allow")

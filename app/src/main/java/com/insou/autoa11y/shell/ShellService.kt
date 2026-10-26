@@ -127,6 +127,11 @@ class ShellService : IShellService.Stub() {
         return sh("appops query-op ${quote(op)} ${quote(mode)}")
     }
 
+    override fun queryInstallRequesters(): String {
+        val cmd = "dumpsys package packages | awk '/^  Package \\[/{pkg=\$2} /android\\.permission\\.REQUEST_INSTALL_PACKAGES/{print pkg}' | sort -u | tr -d '[]'"
+        return sh(cmd)
+    }
+
     override fun setAppOps(pkg: String, op: String, mode: String): String {
         sh("appops set ${quote(pkg)} ${quote(op)} ${quote(mode)}")
         return sh("appops get ${quote(pkg)} ${quote(op)}")
