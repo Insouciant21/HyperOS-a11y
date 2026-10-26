@@ -60,8 +60,10 @@ fun AppRoot() {
 
     // -style liquid glass lens on a floating pill bar.
     val dark = isSystemInDarkTheme()
-    val glassTint = if (dark) Color(0xFF20222A).copy(alpha = 0.62f)
-    else Color(0xFFFFFFFF).copy(alpha = 0.45f)
+    //  tints: dark glass tint α0.48, light F4F4F4 α0.576.
+    val glassTint = if (dark) Color(0xFF20222A).copy(alpha = 0.48f)
+    else Color(0xFFF4F4F4).copy(alpha = 0.576f)
+    val glassSaturation = if (dark) 1.925f else 2.1f
 
     val backdrop = rememberGlassBackdrop()
     var rootPos by remember { mutableStateOf(Offset.Zero) }
@@ -103,6 +105,7 @@ fun AppRoot() {
                     paneOffsetInRoot = { panePos ?: Offset.Zero },
                     rootOffsetInRoot = { rootPos },
                     tint = glassTint,
+                    saturation = glassSaturation,
                 ),
         ) {
             NavigationBar(
