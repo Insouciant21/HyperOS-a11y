@@ -8,3 +8,4 @@ captures/
 .ui.xml
 *.apk
 *.apks
+.s_*.png
