@@ -8,11 +8,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -52,10 +51,10 @@ val GlassNavBottomPadding = 132.dp
 @Composable
 fun AppRoot() {
     val tabs = listOf(
-        Tab("无障碍", Icons.Filled.Home),
-        Tab("安装", Icons.Filled.Add),
-        Tab("安装权限", Icons.Filled.Lock),
-        Tab("通知权限", Icons.Filled.Notifications),
+        Tab("无障碍", Icons.Outlined.Home),
+        Tab("安装", Icons.Outlined.Add),
+        Tab("安装权限", Icons.Outlined.Lock),
+        Tab("通知权限", Icons.Outlined.Notifications),
     )
     var selected by rememberSaveable { mutableIntStateOf(0) }
 
