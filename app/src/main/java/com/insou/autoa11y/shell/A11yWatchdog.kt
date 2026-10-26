@@ -12,6 +12,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -42,6 +44,7 @@ object A11yWatchdog {
     val log: StateFlow<List<String>> = _log
 
     private val retryTimestamps = HashMap<String, MutableList<Long>>()
+    private val checkMutex = Mutex()
     private val _watch = MutableStateFlow<Set<String>>(emptySet())
     val watch: StateFlow<Set<String>> = _watch
 
@@ -56,7 +59,16 @@ object A11yWatchdog {
     fun init(context: Context) {
         appContext = context.applicationContext
         val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        _watch.value = prefs.getStringSet(KEY_WATCH, emptySet())?.toSet() ?: emptySet()
+        val saved = prefs.getStringSet(KEY_WATCH, emptySet())?.toSet() ?: emptySet()
+        // A past session is not permission to revive a service that is off now.
+        // Only services still enabled at startup can enter this session's watch.
+        _watch.value = saved.map(::norm).intersect(currentEnabled())
+        if (_watch.value != saved) {
+            persistWatch(_watch.value)
+            if (saved.map(::norm).toSet().size > _watch.value.size) {
+                appendLog("已清理已关闭的历史保护项")
+            }
+        }
         appContext.contentResolver.registerContentObserver(
             Settings.Secure.getUriFor(Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES),
             false,
@@ -67,13 +79,18 @@ object A11yWatchdog {
     var master: Boolean
         get() = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_MASTER, true)
         set(value) {
+            if (value) {
+                // Turning protection back on also starts from the current state.
+                _watch.value = _watch.value.intersect(currentEnabled())
+                persistWatch(_watch.value)
+            }
             appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putBoolean(KEY_MASTER, value).apply()
         }
 
     fun onEnabledByApp(component: String) {
         if (!master) return
-        val next = _watch.value + component
+        val next = _watch.value + norm(component)
         _watch.value = next
         persistWatch(next)
         clearFails(component)
@@ -81,11 +98,21 @@ object A11yWatchdog {
     }
 
     fun onDisabledByApp(component: String) {
-        val next = _watch.value - component
+        val next = _watch.value - norm(component)
         _watch.value = next
         persistWatch(next)
         clearFails(component)
         appendLog("停止保护 ${shortName(component)}")
+    }
+
+    /** A user's disable runs after any recovery already in flight, so it wins. */
+    suspend fun setEnabledByUser(component: String, enable: Boolean): String {
+        if (!enable) onDisabledByApp(component)
+        return checkMutex.withLock {
+            val result = ShellGateway.call { it.setA11yEnabled(component, enable) }
+            if (enable) onEnabledByApp(component)
+            result
+        }
     }
 
     private fun persistWatch(set: Set<String>) {
@@ -104,15 +131,16 @@ object A11yWatchdog {
     private fun norm(c: String): String =
         ComponentName.unflattenFromString(c)?.flattenToString() ?: c
 
-    private suspend fun check() {
-        if (!master) return
+    private suspend fun check() = checkMutex.withLock {
+        if (!master) return@withLock
         val watching = _watch.value
-        if (watching.isEmpty()) return
+        if (watching.isEmpty()) return@withLock
         val current = currentEnabled()
         val missing = watching.filter { norm(it) !in current }
-        if (missing.isEmpty()) return
+        if (missing.isEmpty()) return@withLock
 
         for (component in missing) {
+            if (!master || component !in _watch.value) continue
             val now = System.currentTimeMillis()
             val stamps = retryTimestamps.getOrPut(component) { mutableListOf() }
             stamps.removeAll { now - it > WINDOW_MS }
@@ -127,9 +155,18 @@ object A11yWatchdog {
             stamps.add(now)
             appendLog("检测到 ${shortName(component)} 被关闭，正在恢复…")
             try {
-                ShellGateway.call { it.setA11yEnabled(component, true) }
-                clearFails(component)
-                appendLog("已恢复 ${shortName(component)}")
+                val restored = ShellGateway.call {
+                    // Binding Shizuku can suspend. A user's disable or a master
+                    // switch change during that wait must cancel the old work.
+                    if (master && component in _watch.value && norm(component) !in currentEnabled()) {
+                        it.setA11yEnabled(component, true)
+                        true
+                    } else false
+                }
+                if (restored) {
+                    clearFails(component)
+                    appendLog("已恢复 ${shortName(component)}")
+                }
             } catch (e: Throwable) {
                 incFails(component)
                 appendLog("恢复失败 (${fails(component)}/${MAX_CONSECUTIVE_FAILS}): ${e.message ?: e.toString()}")

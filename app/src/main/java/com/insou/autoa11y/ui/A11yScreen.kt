@@ -28,7 +28,6 @@ import androidx.compose.ui.unit.dp
 import com.insou.autoa11y.data.DeviceStore
 import com.insou.autoa11y.data.ServiceEntry
 import com.insou.autoa11y.shell.A11yWatchdog
-import com.insou.autoa11y.shell.ShellGateway
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
@@ -62,10 +61,8 @@ fun A11yScreen() {
         busyComponent = entry.component
         scope.launch {
             try {
-                val result = ShellGateway.call { it.setA11yEnabled(entry.component, turnOn) }
+                val result = A11yWatchdog.setEnabledByUser(entry.component, turnOn)
                 enabled = result.split(':').filter { it.isNotBlank() }.map(::norm).toSet()
-                if (turnOn) A11yWatchdog.onEnabledByApp(entry.component)
-                else A11yWatchdog.onDisabledByApp(entry.component)
                 error = null
             } catch (e: Throwable) {
                 error = e.message ?: e.toString()
