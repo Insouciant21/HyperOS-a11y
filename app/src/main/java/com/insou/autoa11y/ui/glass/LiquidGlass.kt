@@ -44,6 +44,10 @@ uniform float uRim;
 uniform float uRimW;
 uniform float4 uTint;
 uniform float uLine;
+// Touch glow: center (pane px), strength 0..1, reach sigma (px).
+uniform float2 uGlowC;
+uniform float uGlowS;
+uniform float uGlowR;
 
 float sdRoundBox(float2 p, float2 b, float r) {
     float2 q = abs(p) - b + r;
@@ -82,6 +86,10 @@ float4 main(float2 fragCoord) {
     float l = dot(col, float3(0.299, 0.587, 0.114));
     col = mix(float3(l), col, uSat);
     col = mix(col, uTint.rgb, uTint.a);
+
+    // Touch glow: light washing out from under the finger (UIKit-style).
+    float gd = distance(uv, uGlowC);
+    col += uGlowS * exp(-(gd * gd) / (2.0 * uGlowR * uGlowR));
 
     // Rim highlight just inside the line, biased to the top edge.
     float band = 1.0 - smoothstep(0.0, uRimW, edge);
@@ -125,6 +133,10 @@ fun Modifier.liquidGlass(
     rimWidth: Dp = 4.5.dp,
     saturation: Float = 1.925f,
     tint: Color,
+    // Touch glow driven by the tab row (LiquidGlassGlow).
+    glowCenter: () -> Offset = { Offset(-1f, -1f) },
+    glowStrength: () -> Float = { 0f },
+    glowReach: Dp = 120.dp,
 ): Modifier {
     val shader = remember { RuntimeShader(LENS_AGSL) }
     val work = rememberGraphicsLayer()
@@ -154,6 +166,9 @@ fun Modifier.liquidGlass(
         shader.setFloatUniform("uRimW", rimWPx)
         shader.setFloatUniform("uTint", tintSpec[0], tintSpec[1], tintSpec[2], tintSpec[3])
         shader.setFloatUniform("uLine", with(density) { 0.67.dp.toPx() })
+        shader.setFloatUniform("uGlowC", glowCenter().x, glowCenter().y)
+        shader.setFloatUniform("uGlowS", glowStrength())
+        shader.setFloatUniform("uGlowR", with(density) { glowReach.toPx() })
 
         //  pill pipeline: the captured backdrop is gaussian-frosted
         // (sigma 15.6 × haze 0.72), then the shader refracts reads of that
