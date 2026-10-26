@@ -42,6 +42,8 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -99,6 +101,9 @@ fun AppRoot() {
     val backdrop = rememberGlassBackdrop()
     var rootPos by remember { mutableStateOf(Offset.Zero) }
     var panePos by remember { mutableStateOf(Offset.Zero) }
+    // Bar rect in glassSource (Scaffold content) coordinates; only this strip
+    // needs capturing for the glass shader.
+    var barRect by remember { mutableStateOf(Rect.Zero) }
 
     // Touch glow, shared between the tab row and the glass shader.
     var glowCenter by remember { mutableStateOf(Offset(-1f, -1f)) }
@@ -108,7 +113,10 @@ fun AppRoot() {
         Scaffold(
             modifier = Modifier
                 .fillMaxSize()
-                .glassSource(backdrop)
+                .glassSource(backdrop) {
+                    // Inflate for refraction/dispersion sampling past the rim.
+                    barRect.inflate(96f).takeIf { !it.isEmpty }
+                }
                 .onGloballyPositioned { rootPos = it.positionInRoot() },
             topBar = { TopAppBar(title = "A11yKit") },
         ) { padding ->
@@ -151,6 +159,7 @@ fun AppRoot() {
             rootPos = { rootPos },
             onGlow = { x, y -> glowCenter = Offset(x, y) },
             onGlowPower = { glowPower = it },
+            onBarRect = { barRect = it },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
@@ -250,6 +259,7 @@ private fun GlassNav(
     rootPos: () -> Offset,
     onGlow: (Float, Float) -> Unit,
     onGlowPower: (Float) -> Unit,
+    onBarRect: (Rect) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val view = LocalView.current
@@ -273,10 +283,17 @@ private fun GlassNav(
         val glow = remember { FcSpring(0f) }
         val drag = remember { FcSpring(0f) }
         var jelly by remember { mutableFloatStateOf(0f) }
+        var barRect by remember { mutableStateOf(Rect.Zero) }
         var liveIndex by remember { mutableIntStateOf(selected) }
         var fingerIndex by remember { mutableIntStateOf(selected) }
         var rowPos by remember { mutableStateOf(Offset.Zero) }
         var glowX by remember { mutableFloatStateOf(-1f) }
+        val backdropOrigin = {
+            // Capture strip origin = inflated bar rect's top-left, in the
+            // same Scaffold-content space the layer records with.
+            val r = barRect
+            if (r.isEmpty) Offset.Zero else Offset(r.left - 96f, r.top - 96f)
+        }
 
         // Physics frame loop (three substeps for the stiff follow spring).
         LaunchedEffect(Unit) {
@@ -317,7 +334,12 @@ private fun GlassNav(
         Box(
             modifier = modifier
                 .height(rowHeight)
-                .onGloballyPositioned { rowPos = it.positionInRoot() },
+                .onGloballyPositioned {
+                    rowPos = it.positionInRoot()
+                    val r = Rect(it.positionInRoot() - rootPos(), it.size.toSize())
+                    barRect = r
+                    onBarRect(r)
+                },
         ) {
             // The bar glass: full-width pane; the goo selection lives inside
             // the shader (lens capsule + finger pill, smooth-min merged).
@@ -345,6 +367,7 @@ private fun GlassNav(
                                 tint = primary.copy(alpha = 0.16f + 0.10f * lift.value),
                             )
                         },
+                        backdropOrigin = backdropOrigin,
                         gooDest = {
                             if (lift.value > 0.05f) {
                                 val h = lensH() * 0.92f

@@ -7,6 +7,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.layer.GraphicsLayer
@@ -142,12 +144,42 @@ float4 main(float2 fragCoord) {
 }
 """
 
-/** Captures the modified content into [layer] (root-box coordinates). */
-fun Modifier.glassSource(layer: GraphicsLayer): Modifier = drawWithContent {
-    layer.record(size.toIntSize()) {
-        this@drawWithContent.drawContent()
+/**
+ * Captures the modified content into [layer]. When [region] is given (in this
+ * node's coordinates) only that strip is recorded — the glass pane sampling
+ * it never leaves the bar's neighborhood, so a full-screen record every
+ * animated frame is wasted work. The content itself always draws directly.
+ */
+fun Modifier.glassSource(
+    layer: GraphicsLayer,
+    region: () -> Rect? = { null },
+): Modifier = drawWithContent {
+    val r = region()
+    if (r == null || r.isEmpty || r.width < 2f) {
+        layer.record(size.toIntSize()) {
+            this@drawWithContent.drawContent()
+        }
+    } else {
+        val clamped = r.intersect(
+            Rect(0f, 0f, size.width, size.height),
+        )
+        if (clamped.isEmpty || clamped.width < 2f) {
+            layer.record(size.toIntSize()) {
+                this@drawWithContent.drawContent()
+            }
+        } else {
+            layer.record(
+                IntSize(clamped.width.toInt(), clamped.height.toInt()),
+            ) {
+                // This GraphicsLayer.record has no topLeft param: shift the
+                // content so the strip region fills the recorded layer.
+                translate(-clamped.left, -clamped.top) {
+                    this@drawWithContent.drawContent()
+                }
+            }
+        }
     }
-    drawLayer(layer)
+    drawContent()
 }
 
 @Composable
@@ -174,6 +206,9 @@ fun Modifier.liquidGlass(
     drag: () -> Float = { 0f },
     gooLens: (() -> GooPill)? = null,
     gooDest: (() -> GooPill?)? = null,
+    // Origin of the backdrop layer's captured region in the same space as
+    // paneOffsetInRoot/rootOffsetInRoot (null = full capture from 0,0).
+    backdropOrigin: () -> Offset = { Offset.Zero },
 ): Modifier = composed {
     val shader = remember { RuntimeShader(LENS_AGSL) }
     val work = rememberGraphicsLayer()
@@ -230,10 +265,11 @@ fun Modifier.liquidGlass(
         work.renderEffect = RenderEffect.createChainEffect(runtime, blur)
             .asComposeRenderEffect()
 
+        val origin = backdropOrigin()
         work.record(size.toIntSize()) {
-            // Shift the root-space backdrop so the pane's area lands at the
-            // work layer's origin: root-point (offset + u) -> layer point u.
-            translate(-offset.x, -offset.y) {
+            // Shift the backdrop (whose capture begins at `origin`) so the
+            // pane's area lands at the work layer's origin.
+            translate(-(offset.x - origin.x), -(offset.y - origin.y)) {
                 drawLayer(backdrop)
             }
         }
