@@ -44,9 +44,6 @@ uniform float uRim;
 uniform float uRimW;
 uniform float4 uTint;
 uniform float uLine;
-uniform float uHaze;
-uniform float uHazeR1;
-uniform float uHazeR2;
 
 float sdRoundBox(float2 p, float2 b, float r) {
     float2 q = abs(p) - b + r;
@@ -73,25 +70,13 @@ float4 main(float2 fragCoord) {
     float dy = sdRoundBox(p + float2(0.0, eps), b, uCorner) - d;
     float2 n = normalize(float2(dx, dy) + 1e-5);
 
-    // Circular bevel: quarter-circle sagitta from the rim, flat a bevel in.
-    // Samples inward — the outermost band shows the content squeezed.
+    // The content texture is the PRE-BLURRED backdrop (RenderEffect on the
+    // capture layer). Refraction samples it inward with the circular-bevel
+    // sagitta; rim shows the content squeezed, iOS tab bar style.
     float rise = 1.0 - clamp(edge / uBevel, 0.0, 1.0);
     float depth = min(uDepth, halfMinor) * (1.0 - sqrt(1.0 - rise * rise));
     float2 src = uv - n * depth;
-
     float4 s = tap(src);
-    if (uHaze > 0.0) {
-        // Wide blur approximated by two 6-tap rings + center, blended over
-        // the sharp read by the haze share.
-        float3 acc = s.rgb;
-        float w = 1.0;
-        for (int i = 0; i < 6; i++) {
-            float a = float(i) * 1.04719755;
-            acc += tap(src + float2(cos(a), sin(a)) * uHazeR1).rgb; w += 1.0;
-            acc += tap(src + float2(cos(a + 0.52), sin(a + 0.52)) * uHazeR2).rgb; w += 1.0;
-        }
-        s.rgb = mix(acc / w, s.rgb, 1.0 - uHaze);
-    }
 
     float3 col = s.rgb;
     float l = dot(col, float3(0.299, 0.587, 0.114));
@@ -130,9 +115,10 @@ fun Modifier.liquidGlass(
     //  / class defaults
     bevel: Dp = 20.dp,
     depth: Dp = 60.dp,
-    haze: Float = 0.72f,
-    hazeRadius1: Dp = 5.dp,
-    hazeRadius2: Dp = 12.dp,
+    // Haze pre-blur sigma applied to the captured backdrop layer
+    // ( pill: blur 0 + haze 0.72 @ sigma 15.6 over the sharp read;
+    // pre-blurring the capture gives a clean gaussian, not tap ghosts).
+    hazeSigma: Dp = 15.6.dp * 0.72f,
     rim: Float = 0.35f,
     rimWidth: Dp = 4.5.dp,
     saturation: Float = 1.925f,
@@ -166,13 +152,14 @@ fun Modifier.liquidGlass(
         shader.setFloatUniform("uRimW", rimWPx)
         shader.setFloatUniform("uTint", tintSpec[0], tintSpec[1], tintSpec[2], tintSpec[3])
         shader.setFloatUniform("uLine", with(density) { 0.67.dp.toPx() })
-        shader.setFloatUniform("uHaze", haze)
-        shader.setFloatUniform("uHazeR1", with(density) { hazeRadius1.toPx() })
-        shader.setFloatUniform("uHazeR2", with(density) { hazeRadius2.toPx() })
 
-        // The pill style blurs its input (haze), not its output: the runtime
-        // shader runs alone, no chained blur.
-        work.renderEffect = RenderEffect.createRuntimeShaderEffect(shader, "content")
+        //  pill pipeline: the captured backdrop is gaussian-frosted
+        // (sigma 15.6 × haze 0.72), then the shader refracts reads of that
+        // frosted texture — blur before optics, never tap-sampled in-shader.
+        val frostPx = with(density) { hazeSigma.toPx() }.coerceAtLeast(0.1f)
+        val runtime = RenderEffect.createRuntimeShaderEffect(shader, "content")
+        val blur = RenderEffect.createBlurEffect(frostPx, frostPx, Shader.TileMode.CLAMP)
+        work.renderEffect = RenderEffect.createChainEffect(runtime, blur)
             .asComposeRenderEffect()
 
         work.record(size.toIntSize()) {
