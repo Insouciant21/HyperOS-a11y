@@ -28,13 +28,20 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private const val OP_INSTALL = "REQUEST_INSTALL_PACKAGES"
 
+/** Process-wide cache so re-entering the tab shows the list instantly
+ *  (tab content is disposed on switch; the loader would otherwise re-run
+ *  hundreds of binder calls on every visit). */
+private var cachedApps: List<AppEntry>? = null
+private var cachedAllow: Set<String>? = null
+
 @Composable
 fun InstallPermsScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var installApps by remember { mutableStateOf<List<AppEntry>>(emptyList()) }
-    var allowSet by remember { mutableStateOf<Set<String>?>(null) }
+    var installApps by remember { mutableStateOf(cachedApps ?: emptyList()) }
+    var allowSet by remember { mutableStateOf(cachedAllow) }
+    var loading = installApps.isEmpty()
     var error by remember { mutableStateOf<String?>(null) }
     var busyKey by remember { mutableStateOf<String?>(null) }
 
@@ -42,6 +49,7 @@ fun InstallPermsScreen() {
         allowSet = try {
             val out = ShellGateway.call { it.queryAppOps(OP_INSTALL, "allow") }
             out.lineSequence().map { it.trim() }.filter { it.contains('.') }.toSet()
+                .also { cachedAllow = it }
         } catch (e: Throwable) {
             error = e.message ?: e.toString()
             allowSet
@@ -49,30 +57,30 @@ fun InstallPermsScreen() {
     }
 
     LaunchedEffect(Unit) {
-        // PackageManager per-package query (empty on some OEMs, e.g. HyperOS 3
-        // without MIUI's 获取应用列表 permission), merged with a shell-side
-        // dumpsys parse when Shizuku is available.
-        val pm = context.packageManager
-        val merged = DeviceStore.installRequesters(context)
-            .associateBy { it.packageName }
-            .toMutableMap()
-        try {
-            ShellGateway.call { it.queryInstallRequesters() }
-                .lineSequence()
-                .map { it.trim() }
-                .filter { it.contains('.') }
-                .forEach { pkg ->
-                    if (pkg !in merged) {
-                        val label = runCatching {
-                            pm.getApplicationInfo(pkg, 0).loadLabel(pm).toString()
-                        }.getOrNull() ?: pkg
-                        merged[pkg] = AppEntry(label, pkg)
-                    }
-                }
-        } catch (e: Throwable) {
-            error = e.message ?: e.toString()
+        if (cachedApps != null) {
+            // Show cache immediately, refresh state (one fast shell call).
+            reloadAllowSet()
+            return@LaunchedEffect
         }
-        installApps = merged.values.sortedBy { it.label.lowercase() }
+        // Cold load: shell dumpsys parse is primary (fast, complete, immune
+        // to MIUI package-visibility filtering); PM query is the fallback
+        // when Shizuku is unavailable.
+        val shellPkgs = try {
+            ShellGateway.call { it.queryInstallRequesters() }
+                .lineSequence().map { it.trim() }.filter { it.contains('.') }.toList()
+        } catch (e: Throwable) {
+            emptyList()
+        }
+        if (shellPkgs.isNotEmpty()) {
+            val labels = DeviceStore.labelsFor(context, shellPkgs)
+            installApps = shellPkgs
+                .map { AppEntry(labels[it] ?: it, it) }
+                .sortedBy { it.label.lowercase() }
+                .also { cachedApps = it }
+        } else {
+            installApps = DeviceStore.installRequesters(context)
+                .also { cachedApps = it }
+        }
         reloadAllowSet()
     }
 
@@ -107,8 +115,12 @@ fun InstallPermsScreen() {
             Card(modifier = Modifier.padding(vertical = 4.dp)) {
                 val allow = allowSet
                 when {
-                    installApps.isEmpty() -> BasicComponent(content = { Text(text = "无声明此权限的应用") })
-                    allow == null -> BasicComponent(content = { Text(text = "读取状态中…（需要 Shizuku）") })
+                    loading && installApps.isEmpty() ->
+                        BasicComponent(content = { Text(text = "读取中…") })
+                    installApps.isEmpty() ->
+                        BasicComponent(content = { Text(text = "无声明此权限的应用") })
+                    allow == null ->
+                        BasicComponent(content = { Text(text = "读取状态中…（需要 Shizuku）") })
                     else -> installApps.forEach { app ->
                         BasicComponent(
                             enabled = busyKey == null,

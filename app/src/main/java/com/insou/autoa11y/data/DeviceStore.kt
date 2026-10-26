@@ -37,7 +37,9 @@ object DeviceStore {
                             } == true
                         ) {
                             AppEntry(
-                                label = pi.applicationInfo?.loadLabel(pm)?.toString() ?: p,
+                                label = pm.getApplicationLabel(
+                                    pi.applicationInfo ?: return@mapNotNull null
+                                ).toString(),
                                 packageName = p,
                             )
                         } else null
@@ -45,6 +47,17 @@ object DeviceStore {
                 }
                 .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
                 .toList()
+        }
+
+    /** Resolves display labels for package names (cheap, binder per call). */
+    suspend fun labelsFor(context: Context, packages: List<String>): Map<String, String> =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val pm = context.packageManager
+            packages.associateWith { pkg ->
+                runCatching {
+                    pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+                }.getOrNull() ?: pkg
+            }
         }
     fun enabledA11y(context: Context): Set<String> =
         Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
