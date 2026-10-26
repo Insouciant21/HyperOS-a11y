@@ -129,9 +129,13 @@ float4 main(float2 fragCoord) {
     gooMask *= 1.0 - smoothstep(-1.5, 1.5, dBar);
     col = mix(col, uLensTint.rgb, uLensTint.a * gooMask);
 
-    // Bright rim around the goo blob, lit all around (selection pill edge).
-    float gband = 1.0 - smoothstep(0.0, 5.0, abs(dGoo));
-    col += (uRim + 0.45) * gband * gband * gooMask;
+    // Selection stroke: a thin bright line hugging the goo edge (CoolApk
+    // look) - brighter than the bar rim, narrow.
+    float gline = 1.0 - smoothstep(0.0, 3.0, abs(dGoo));
+    col += (uRim + 0.85) * gline * gooMask;
+    // Soft inner sheen just inside the stroke.
+    float gband = 1.0 - smoothstep(0.0, 9.0, dGoo);
+    col += (uRim * 0.55) * gband * gband * gooMask;
 
     // Bar rim highlight, biased to the top edge; boosted while dragging.
     float band = 1.0 - smoothstep(0.0, uRimW, barEdge);
