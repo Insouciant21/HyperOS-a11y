@@ -1,6 +1,13 @@
 package com.insou.autoa11y.ui
 
 import android.view.HapticFeedbackConstants
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -112,11 +119,25 @@ fun AppRoot() {
                     .padding(horizontal = 16.dp),
             ) {
                 ShizukuBanner()
-                when (selected) {
-                    0 -> A11yScreen()
-                    1 -> InstallScreen()
-                    2 -> InstallPermsScreen()
-                    else -> NotifPermsScreen()
+                AnimatedContent(
+                    targetState = selected,
+                    transitionSpec = {
+                        // Directional shared-axis slide, as 's
+                        // PageView animateToPage (300ms easeOut).
+                        val dir = if (targetState > initialState) 1 else -1
+                        (slideInHorizontally(tween(300, easing = androidx.compose.animation.core.EaseOut)) { dir * it / 4 } +
+                            fadeIn(tween(220))) togetherWith
+                            (slideOutHorizontally(tween(300, easing = androidx.compose.animation.core.EaseOut)) { dir * it / 4 } +
+                                fadeOut(tween(180)))
+                    },
+                    label = "page",
+                ) { page ->
+                    when (page) {
+                        0 -> A11yScreen()
+                        1 -> InstallScreen()
+                        2 -> InstallPermsScreen()
+                        else -> NotifPermsScreen()
+                    }
                 }
             }
         }
@@ -312,6 +333,7 @@ private fun GlassNav(
                         saturation = glassSaturation,
                         glowCenter = { Offset(glowX, rowHeightPx / 2f) },
                         glowStrength = { glow.value * 0.45f },
+                        glowReach = { 120.dp * (1f + 0.6f * (1f - glow.value)) },
                         drag = { drag.value },
                         gooLens = {
                             val w = lensW()
@@ -409,10 +431,12 @@ private fun GlassNav(
                             .fillMaxHeight()
                             .graphicsLayer {
                                 //  content under the lens
-                                // grows up to +16%.
+                                // grows up to +16%; a press adds ElasticPress
+                                // swell on the touched destination.
                                 val d = abs(lens.value - i)
                                 val mag = 1f + 0.16f * (1f - min(1f, d * 1.6f))
-                                    .coerceIn(0f, 1f)
+                                    .coerceIn(0f, 1f) +
+                                    0.08f * lift.value * (if (fingerIndex == i) 1f else 0f)
                                 scaleX = mag
                                 scaleY = mag
                             },

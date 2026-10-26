@@ -171,7 +171,7 @@ fun Modifier.liquidGlass(
     tint: Color,
     glowCenter: () -> Offset = { Offset(-1f, -1f) },
     glowStrength: () -> Float = { 0f },
-    glowReach: Dp = 120.dp,
+    glowReach: () -> Dp = { 120.dp },
     drag: () -> Float = { 0f },
     gooLens: (() -> GooPill)? = null,
     gooDest: (() -> GooPill?)? = null,
@@ -203,7 +203,7 @@ fun Modifier.liquidGlass(
         shader.setFloatUniform("uDrag", drag())
         shader.setFloatUniform("uGlowC", glowCenter().x, glowCenter().y)
         shader.setFloatUniform("uGlowS", glowStrength())
-        shader.setFloatUniform("uGlowR", with(density) { glowReach.toPx() })
+        shader.setFloatUniform("uGlowR", with(density) { glowReach().toPx() })
 
         val lensPill = gooLens?.invoke()
         if (lensPill != null) {
