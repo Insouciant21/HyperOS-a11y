@@ -33,13 +33,8 @@ fun InstallPermsScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // 本应用未知安装权
-    var ownInstallOn by remember { mutableStateOf<Boolean?>(null) }
-
-    // 全设备未知安装权
     var installApps by remember { mutableStateOf<List<AppEntry>>(emptyList()) }
     var allowSet by remember { mutableStateOf<Set<String>?>(null) }
-
     var error by remember { mutableStateOf<String?>(null) }
     var busyKey by remember { mutableStateOf<String?>(null) }
 
@@ -54,8 +49,9 @@ fun InstallPermsScreen() {
     }
 
     LaunchedEffect(Unit) {
-        // PackageManager per-package query (empty on some OEMs, e.g. HyperOS 3),
-        // merged with a shell-side dumpsys parse when Shizuku is available.
+        // PackageManager per-package query (empty on some OEMs, e.g. HyperOS 3
+        // without MIUI's 获取应用列表 permission), merged with a shell-side
+        // dumpsys parse when Shizuku is available.
         val pm = context.packageManager
         val merged = DeviceStore.installRequesters(context)
             .associateBy { it.packageName }
@@ -78,25 +74,16 @@ fun InstallPermsScreen() {
         }
         installApps = merged.values.sortedBy { it.label.lowercase() }
         reloadAllowSet()
-        ownInstallOn = try {
-            ShellGateway.call { it.getAppOps(context.packageName, OP_INSTALL) }.contains("allow")
-        } catch (e: Throwable) {
-            null
-        }
     }
 
-    fun toggleInstallPerm(pkg: String, turnOn: Boolean, isOwn: Boolean = false) {
+    fun toggleInstallPerm(pkg: String, turnOn: Boolean) {
         busyKey = pkg
         scope.launch {
             try {
-                val out = ShellGateway.call {
+                ShellGateway.call {
                     it.setAppOps(pkg, OP_INSTALL, if (turnOn) "allow" else "default")
                 }
-                if (isOwn) {
-                    ownInstallOn = out.contains("allow")
-                } else {
-                    reloadAllowSet()
-                }
+                reloadAllowSet()
                 error = null
             } catch (e: Throwable) {
                 error = e.message ?: e.toString()
@@ -107,28 +94,6 @@ fun InstallPermsScreen() {
     }
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
-        item { SmallTitle(text = "本应用") }
-        item {
-            Card(modifier = Modifier.padding(vertical = 4.dp)) {
-                BasicComponent(
-                    content = {
-                        Text(text = "未知应用安装权（REQUEST_INSTALL_PACKAGES）")
-                        Text(
-                            text = ownInstallOn?.let { if (it) "已允许" else "默认" } ?: "读取中…",
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        )
-                    },
-                    endActions = {
-                        Switch(
-                            checked = ownInstallOn == true,
-                            onCheckedChange = null,
-                            enabled = busyKey == null,
-                        )
-                    },
-                )
-            }
-        }
-
         error?.let {
             item {
                 Card(modifier = Modifier.padding(vertical = 4.dp)) {
