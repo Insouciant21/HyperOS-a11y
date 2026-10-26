@@ -7,6 +7,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.EaseOut
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -41,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.toSize
@@ -56,6 +59,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.sp
 import com.insou.autoa11y.shell.ShellGateway
 import com.insou.autoa11y.shell.ShellState
@@ -127,25 +131,20 @@ fun AppRoot() {
                     .padding(horizontal = 16.dp),
             ) {
                 ShizukuBanner()
-                AnimatedContent(
-                    targetState = selected,
-                    transitionSpec = {
-                        // Directional shared-axis slide, native tab-switch rhythm (300ms easeOut).
-                        val dir = if (targetState > initialState) 1 else -1
-                        (slideInHorizontally(tween(300, easing = androidx.compose.animation.core.EaseOut)) { dir * it / 4 } +
-                            fadeIn(tween(220))) togetherWith
-                            (slideOutHorizontally(tween(300, easing = androidx.compose.animation.core.EaseOut)) { dir * it / 4 } +
-                                fadeOut(tween(180)))
-                    },
-                    label = "page",
-                ) { page ->
-                    when (page) {
-                        0 -> A11yScreen()
-                        1 -> InstallScreen()
-                        2 -> InstallPermsScreen()
-                        else -> NotifPermsScreen()
-                    }
-                }
+                // Keep-alive pages: all four stay composed (zero recomposition
+                // per switch); the switch animates alpha + a quarter-width
+                // slide purely in the draw phase. AnimatedContent would
+                // dispose/recompose the target page on every switch - the
+                // 40-120ms hitches seen under gfxinfo.
+                KeepAlivePages(
+                    selected,
+                    listOf(
+                        { A11yScreen() },
+                        { InstallScreen() },
+                        { InstallPermsScreen() },
+                        { NotifPermsScreen() },
+                    ),
+                )
             }
         }
 
@@ -191,6 +190,53 @@ private fun ShizukuBanner() {
         }
 
         is ShellState.Ready -> Unit
+    }
+}
+
+/** All pages stay composed; switching animates alpha/slide in draw phase. */
+@Composable
+private fun KeepAlivePages(
+    selected: Int,
+    pages: List<@Composable () -> Unit>,
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        pages.forEachIndexed { i, page ->
+            val isActive = i == selected
+            val alpha by animateFloatAsState(
+                targetValue = if (isActive) 1f else 0f,
+                animationSpec = tween(220),
+                label = "alpha$i",
+            )
+            val slide by animateFloatAsState(
+                targetValue = if (isActive) 0f else ((i - selected).coerceIn(-1, 1)) * 0.25f,
+                animationSpec = tween(300, easing = EaseOut),
+                label = "slide$i",
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(if (isActive) 1f else 0f)
+                    .graphicsLayer {
+                        this.alpha = alpha
+                        translationX = slide * size.width
+                    }
+                    .drawWithContent { if (alpha > 0.004f) drawContent() }
+                    // Inactive pages sit below the active one; consume stray
+                    // hits that fall through the active page's empty areas.
+                    .pointerInput(isActive) {
+                        if (!isActive) {
+                            awaitEachGesture {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    event.changes.forEach { it.consume() }
+                                }
+                            }
+                        }
+                    },
+            ) {
+                page()
+            }
+        }
     }
 }
 
