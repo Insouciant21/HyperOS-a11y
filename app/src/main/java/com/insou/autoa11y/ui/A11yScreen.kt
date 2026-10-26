@@ -1,6 +1,7 @@
 package com.insou.autoa11y.ui
 
 import android.content.ComponentName
+import android.os.SystemClock
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -28,6 +30,8 @@ import androidx.compose.ui.unit.dp
 import com.insou.autoa11y.data.DeviceStore
 import com.insou.autoa11y.data.ServiceEntry
 import com.insou.autoa11y.shell.A11yWatchdog
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
@@ -47,24 +51,37 @@ fun A11yScreen() {
 
     var entries by remember { mutableStateOf<List<ServiceEntry>>(emptyList()) }
     var enabled by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var groupedEnabled by remember { mutableStateOf<Set<String>>(emptySet()) }
     var error by remember { mutableStateOf<String?>(null) }
     var busyComponent by remember { mutableStateOf<String?>(null) }
 
     fun reload() {
+        if (busyComponent != null) return
         entries = DeviceStore.installedA11y(context)
         enabled = DeviceStore.enabledA11y(context).map(::norm).toSet()
+        groupedEnabled = enabled
     }
 
     LaunchedEffect(Unit) { reload() }
 
     fun toggle(entry: ServiceEntry, turnOn: Boolean) {
+        if (busyComponent != null) return
+        val previous = enabled
+        val component = norm(entry.component)
         busyComponent = entry.component
+        enabled = if (turnOn) enabled + component else enabled - component
+        val started = SystemClock.uptimeMillis()
         scope.launch {
             try {
                 val result = A11yWatchdog.setEnabledByUser(entry.component, turnOn)
                 enabled = result.split(':').filter { it.isNotBlank() }.map(::norm).toSet()
                 error = null
+                // Keep this switch composed while its spring settles, then regroup.
+                delay((350L - (SystemClock.uptimeMillis() - started)).coerceAtLeast(0L))
+                groupedEnabled = enabled
             } catch (e: Throwable) {
+                if (e is CancellationException) throw e
+                enabled = previous
                 error = e.message ?: e.toString()
             } finally {
                 busyComponent = null
@@ -74,6 +91,7 @@ fun A11yScreen() {
 
     val watchdogOn by A11yWatchdog.watch.collectAsState()
     val watchdogLog by A11yWatchdog.log.collectAsState()
+    val watchdogEnabled by A11yWatchdog.masterState.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
         Card(modifier = Modifier.padding(vertical = 4.dp)) {
@@ -88,7 +106,7 @@ fun A11yScreen() {
                 },
                 endActions = {
                     Switch(
-                        checked = A11yWatchdog.master,
+                        checked = watchdogEnabled,
                         onCheckedChange = { A11yWatchdog.master = it },
                     )
                 },
@@ -119,7 +137,7 @@ fun A11yScreen() {
             }
         }
 
-        val (on, off) = entries.partition { norm(it.component) in enabled }
+        val (on, off) = entries.partition { norm(it.component) in groupedEnabled }
 
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             if (on.isNotEmpty()) {
@@ -127,7 +145,11 @@ fun A11yScreen() {
                 item {
                     Card(modifier = Modifier.padding(vertical = 4.dp)) {
                         on.forEach { entry ->
-                            ServiceRow(entry, true, busyComponent == entry.component) { t -> toggle(entry, t) }
+                            key(entry.component) {
+                                ServiceRow(
+                                    entry, norm(entry.component) in enabled, busyComponent != null,
+                                ) { t -> toggle(entry, t) }
+                            }
                         }
                     }
                 }
@@ -139,7 +161,11 @@ fun A11yScreen() {
                         BasicComponent(content = { Text(text = "无") })
                     } else {
                         off.forEach { entry ->
-                            ServiceRow(entry, false, busyComponent == entry.component) { t -> toggle(entry, t) }
+                            key(entry.component) {
+                                ServiceRow(
+                                    entry, norm(entry.component) in enabled, busyComponent != null,
+                                ) { t -> toggle(entry, t) }
+                            }
                         }
                     }
                 }
@@ -170,7 +196,7 @@ private fun ServiceRow(
         endActions = {
             // Display-only: the whole row is the single toggle target, so a tap
             // on the switch area cannot double-fire onClick + onCheckedChange.
-            Switch(checked = checked, onCheckedChange = null, enabled = !busy)
+            StatusSwitch(checked = checked, busy = busy)
         },
     )
 }

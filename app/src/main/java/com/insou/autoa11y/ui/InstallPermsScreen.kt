@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -18,11 +19,11 @@ import androidx.compose.ui.unit.dp
 import com.insou.autoa11y.data.AppEntry
 import com.insou.autoa11y.data.DeviceStore
 import com.insou.autoa11y.shell.ShellGateway
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -45,12 +46,16 @@ fun InstallPermsScreen() {
     var error by remember { mutableStateOf<String?>(null) }
     var busyKey by remember { mutableStateOf<String?>(null) }
 
+    suspend fun readAllowSet(): Set<String> {
+        val out = ShellGateway.call { it.queryAppOps(OP_INSTALL, "allow") }
+        return out.lineSequence().map { it.trim() }.filter { it.contains('.') }.toSet()
+    }
+
     suspend fun reloadAllowSet() {
         allowSet = try {
-            val out = ShellGateway.call { it.queryAppOps(OP_INSTALL, "allow") }
-            out.lineSequence().map { it.trim() }.filter { it.contains('.') }.toSet()
-                .also { cachedAllow = it }
+            readAllowSet().also { cachedAllow = it }
         } catch (e: Throwable) {
+            if (e is CancellationException) throw e
             error = e.message ?: e.toString()
             allowSet
         }
@@ -85,15 +90,20 @@ fun InstallPermsScreen() {
     }
 
     fun toggleInstallPerm(pkg: String, turnOn: Boolean) {
+        if (busyKey != null) return
+        val previous = allowSet ?: return
         busyKey = pkg
+        allowSet = if (turnOn) previous + pkg else previous - pkg
         scope.launch {
             try {
                 ShellGateway.call {
                     it.setAppOps(pkg, OP_INSTALL, if (turnOn) "allow" else "default")
                 }
-                reloadAllowSet()
+                allowSet = readAllowSet().also { cachedAllow = it }
                 error = null
             } catch (e: Throwable) {
+                if (e is CancellationException) throw e
+                allowSet = previous
                 error = e.message ?: e.toString()
             } finally {
                 busyKey = null
@@ -103,15 +113,15 @@ fun InstallPermsScreen() {
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         error?.let {
-            item {
+            item(key = "error") {
                 Card(modifier = Modifier.padding(vertical = 4.dp)) {
                     BasicComponent(content = { Text(text = "错误: $it") })
                 }
             }
         }
 
-        item { SmallTitle(text = "全设备（${installApps.size}）") }
-        item {
+        item(key = "title") { SmallTitle(text = "全设备（${installApps.size}）") }
+        item(key = "apps") {
             Card(modifier = Modifier.padding(vertical = 4.dp)) {
                 val allow = allowSet
                 when {
@@ -122,21 +132,23 @@ fun InstallPermsScreen() {
                     allow == null ->
                         BasicComponent(content = { Text(text = "读取状态中…（需要 Shizuku）") })
                     else -> installApps.forEach { app ->
-                        BasicComponent(
-                            enabled = busyKey == null,
-                            onClick = { toggleInstallPerm(app.packageName, app.packageName !in allow) },
-                            startAction = { AppIcon(packageName = app.packageName) },
-                            content = {
-                                Text(text = app.label)
-                                Text(
-                                    text = app.packageName,
-                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                )
-                            },
-                            endActions = {
-                                Switch(checked = app.packageName in allow, onCheckedChange = null, enabled = busyKey == null)
-                            },
-                        )
+                        key(app.packageName) {
+                            BasicComponent(
+                                enabled = busyKey == null,
+                                onClick = { toggleInstallPerm(app.packageName, app.packageName !in allow) },
+                                startAction = { AppIcon(packageName = app.packageName) },
+                                content = {
+                                    Text(text = app.label)
+                                    Text(
+                                        text = app.packageName,
+                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                    )
+                                },
+                                endActions = {
+                                    StatusSwitch(checked = app.packageName in allow, busy = busyKey != null)
+                                },
+                            )
+                        }
                     }
                 }
             }

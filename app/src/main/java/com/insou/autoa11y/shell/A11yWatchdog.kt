@@ -47,6 +47,8 @@ object A11yWatchdog {
     private val checkMutex = Mutex()
     private val _watch = MutableStateFlow<Set<String>>(emptySet())
     val watch: StateFlow<Set<String>> = _watch
+    private val _master = MutableStateFlow(true)
+    val masterState: StateFlow<Boolean> = _master
 
     private val observer = object : ContentObserver(handler) {
         private var pending: Runnable? = null
@@ -59,6 +61,7 @@ object A11yWatchdog {
     fun init(context: Context) {
         appContext = context.applicationContext
         val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        _master.value = prefs.getBoolean(KEY_MASTER, true)
         val saved = prefs.getStringSet(KEY_WATCH, emptySet())?.toSet() ?: emptySet()
         // A past session is not permission to revive a service that is off now.
         // Only services still enabled at startup can enter this session's watch.
@@ -77,7 +80,7 @@ object A11yWatchdog {
     }
 
     var master: Boolean
-        get() = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_MASTER, true)
+        get() = _master.value
         set(value) {
             if (value) {
                 // Turning protection back on also starts from the current state.
@@ -86,6 +89,7 @@ object A11yWatchdog {
             }
             appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putBoolean(KEY_MASTER, value).apply()
+            _master.value = value
         }
 
     fun onEnabledByApp(component: String) {

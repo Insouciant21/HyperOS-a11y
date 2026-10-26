@@ -7,10 +7,12 @@ import android.content.pm.PackageManager
 import android.os.IBinder
 import rikka.shizuku.Shizuku
 import rikka.shizuku.Shizuku.UserServiceArgs
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 
 sealed interface ShellState {
@@ -110,14 +112,16 @@ object ShellGateway {
         return waited ?: error("UserService 连接超时")
     }
 
-    /** Run one privileged operation; retries once after a rebind. */
+    /** Binder calls can wait on shell commands; keep them off the UI thread. */
     suspend fun <T> call(block: (IShellService) -> T): T {
         return try {
-            block(awaitService())
+            val bound = awaitService()
+            withContext(Dispatchers.IO) { block(bound) }
         } catch (e: IllegalStateException) {
             service = null
             refreshState()
-            block(awaitService())
+            val bound = awaitService()
+            withContext(Dispatchers.IO) { block(bound) }
         }
     }
 }
