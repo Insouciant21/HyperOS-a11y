@@ -9,6 +9,8 @@
 - **安装**：SAF 选择 `.apk / .apks / .apkm / .xapk / .apk.1`，按内容识别格式（非扩展名）；单 APK 走 `pm install`，拆分包走 `install-create/write/commit` 多会话；xapk 的 OBB 自动解到 `Android/obb/<pkg>/`；加密 apkm 识别并提示不支持；五项安装选项（-r/-t/-d/-g/绕过低 targetSdk 拦截）
 - **安装权限**：未知应用安装权（`appops REQUEST_INSTALL_PACKAGES`，`query-op` 批量拉取状态）全设备列表开关，含本应用
 - **通知权限**：通知使用权（`cmd notification allow_listener`）全设备列表开关
+- **玻璃导航**：FlClash 风格胶囊，支持按压抬升、跟手变形、图标文字放大折射、边缘阻尼与松手吸附。
+- **开关动画**：滑块与颜色平滑过渡，权限写入在后台执行；无障碍服务在动画完成后重新分组，写入失败时回退状态。
 
 ## 前提
 
@@ -28,7 +30,7 @@ app/src/main/java/com/insou/autoa11y/
 ├─ shell/       # IShellService(UserService) / ShellGateway / A11yWatchdog
 ├─ data/        # 设备状态读取（免特权部分）
 ├─ installer/   # 内容识别与包信息解析
-└─ ui/          # Miuix 三页 UI + 玻璃导航
+└─ ui/          # Miuix 四页 UI + 玻璃导航
 ```
 
 AIDL 变更后需递增 `ShellGateway` 中 UserServiceArgs 的 `version`，Shizuku 才会重建 shell 服务进程。
