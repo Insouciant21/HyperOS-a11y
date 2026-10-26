@@ -84,7 +84,7 @@ fun A11yScreen() {
                 content = {
                     Text(text = "自愈保护")
                     Text(
-                        text = (watchdogLog.lastOrNull() ?: "通过本应用开启的服务将被监控，被系统关闭后自动恢复")
+                        text = (watchdogLog.lastOrNull() ?: "开启的服务被系统关闭后自动恢复")
                             .let { "保护 ${watchdogOn.size} 个 · $it" },
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )

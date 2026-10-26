@@ -140,8 +140,13 @@ float4 main(float2 fragCoord) {
     float gd = distance(uv, uGlowC);
     col += uGlowS * exp(-(gd * gd) / (2.0 * uGlowR * uGlowR));
 
-    // Coverage = bar shape (soft AA edge, premultiplied out).
-    float alpha = 1.0 - smoothstep(-1.0, 1.0, dBar);
+    // Coverage = bar shape UNION goo selection: the goo blob is part of the
+    // glass, so where it swells past the bar's edge (press lift) the glass
+    // stays opaque instead of punching a hole to the page background.
+    float alpha = max(
+        1.0 - smoothstep(-1.0, 1.0, dBar),
+        gooMask
+    );
     return float4(col * alpha, alpha);
 }
 """
