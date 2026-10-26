@@ -118,7 +118,10 @@ float4 main(float2 fragCoord) {
     float dGoo = sdPill(uv, uLens.xy, uLens.z, uLens.w);
     if (uDestP > 0.003) {
         float dDest = sdPill(uv, uDest.xy, uDest.z, uDest.w);
-        dGoo = smin(dGoo, dDest, 60.0);
+        // Blend radius grows with the pill gap so the liquid bridge stretches
+        // and thins instead of snapping into a squared notch ("bursting").
+        float gap = length(uLens.xy - uDest.xy) - uLens.z - uDest.z;
+        dGoo = smin(dGoo, dDest, 60.0 + clamp(gap, 0.0, 400.0) * 0.25);
     }
     float gooMask = 1.0 - smoothstep(-1.5, 1.5, dGoo);
     col = mix(col, uLensTint.rgb, uLensTint.a * gooMask);

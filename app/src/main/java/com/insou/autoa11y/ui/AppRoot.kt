@@ -308,7 +308,10 @@ private fun GlassNav(
                         glow.step(dt / 3f)
                         drag.step(dt / 3f)
                     }
-                    val jTarget = min(abs(lens.velocity) / 4f, 1f) * 0.5f
+                    // Plump lens while pressed: a squashed lens meeting the round finger pill
+                    // reads as the goo bursting.
+                    val jCap = if (lift.value > 0.5f) 0.22f else 0.5f
+                    val jTarget = min(abs(lens.velocity) / 4f, 1f) * jCap
                     jelly += (jTarget - jelly) * min(1f, dt * 20f)
                     liveIndex = lens.value.roundToInt().coerceIn(0, tabs.size - 1)
                 }
@@ -370,7 +373,7 @@ private fun GlassNav(
                         backdropOrigin = backdropOrigin,
                         gooDest = {
                             if (lift.value > 0.05f) {
-                                val h = lensH() * 0.92f
+                                val h = lensH()
                                 GooPill(
                                     cx = (fingerIndex + 0.5f) * tabWidthPx,
                                     cy = rowHeightPx / 2f,
