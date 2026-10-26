@@ -1,7 +1,6 @@
 package com.insou.autoa11y.ui
 
 import android.view.HapticFeedbackConstants
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -15,9 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Home
@@ -31,18 +28,16 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -51,11 +46,11 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.insou.autoa11y.shell.ShellGateway
 import com.insou.autoa11y.shell.ShellState
+import com.insou.autoa11y.ui.glass.GooPill
 import com.insou.autoa11y.ui.glass.glassSource
 import com.insou.autoa11y.ui.glass.liquidGlass
 import com.insou.autoa11y.ui.glass.rememberGlassBackdrop
@@ -96,7 +91,7 @@ fun AppRoot() {
 
     val backdrop = rememberGlassBackdrop()
     var rootPos by remember { mutableStateOf(Offset.Zero) }
-    var panePos by remember { mutableStateOf<Offset?>(null) }
+    var panePos by remember { mutableStateOf(Offset.Zero) }
 
     // Touch glow, shared between the tab row and the glass shader.
     var glowCenter by remember { mutableStateOf(Offset(-1f, -1f)) }
@@ -217,12 +212,12 @@ private const val TRAVEL_K = 380f
 private const val TRAVEL_Z = 0.78f
 
 /**
- *  floating nav bar full port - the GLASS ITSELF is the traveling
- * lens: one floating glass pane whose rect (position/size/jelly/lift) is the
- * spring-driven lens state, refracting whatever sits behind it. Destinations
- * stay tappable through the row. Follows the finger, rubber-bands at the ends,
- * flings at most one destination past the finger, ticks haptics when crossing
- * destinations, grows under a press, and drives a touch glow in the shader.
+ *  floating nav bar ultra port: one full-width glass bar (pill
+ * optics) whose shader draws the goo selection — a capsule that springs
+ * between destinations, merging liquid-like with the finger pill while
+ * pressed. Destinations magnify under the selection and swell under a press.
+ * Rubber-bands at the ends, flings at most one destination past the finger,
+ * ticks haptics when crossing destinations.
  */
 @Composable
 private fun GlassNav(
@@ -239,6 +234,7 @@ private fun GlassNav(
 ) {
     val view = LocalView.current
     val density = LocalDensity.current
+    val currentSelected by rememberUpdatedState(selected)
 
     BoxWithConstraints(modifier = modifier) {
         val rowWidth = maxWidth
@@ -249,12 +245,16 @@ private fun GlassNav(
         val lensRestPx = with(density) { 46.dp.toPx() }
         val liftGrowthPx = with(density) { 6.dp.toPx() }
 
+        val primary = MiuixTheme.colorScheme.primary
+        val dimColor = MiuixTheme.colorScheme.onSurfaceVariantSummary
+
         val lens = remember { FcSpring(selected.toFloat()) }
         val lift = remember { FcSpring(0f) }
         val glow = remember { FcSpring(0f) }
         val drag = remember { FcSpring(0f) }
         var jelly by remember { mutableFloatStateOf(0f) }
         var liveIndex by remember { mutableIntStateOf(selected) }
+        var fingerIndex by remember { mutableIntStateOf(selected) }
         var rowPos by remember { mutableStateOf(Offset.Zero) }
         var glowX by remember { mutableFloatStateOf(-1f) }
 
@@ -271,7 +271,7 @@ private fun GlassNav(
                         glow.step(dt / 3f)
                         drag.step(dt / 3f)
                     }
-                    val jTarget = min(abs(lens.velocity) / 3f, 1f) * 0.6f
+                    val jTarget = min(abs(lens.velocity) / 4f, 1f) * 0.5f
                     jelly += (jTarget - jelly) * min(1f, dt * 20f)
                     liveIndex = lens.value.roundToInt().coerceIn(0, tabs.size - 1)
                 }
@@ -290,53 +290,60 @@ private fun GlassNav(
             }
         }
 
-        // The lens rect (row-local), one source of truth for glass and glow.
-        fun lensLeft(): Float = lens.value * tabWidthPx
-        fun lensWidth(): Float =
-            tabWidthPx * (1f + jelly) + lift.value * liftGrowthPx
-        fun lensHeight(): Float =
-            lensRestPx * (1f - jelly * 0.55f) + lift.value * liftGrowthPx
+        // Lens rect (row-local px), jelly + press lift applied.
+        fun lensW(): Float = tabWidthPx * (1f + jelly) + lift.value * liftGrowthPx
+        fun lensH(): Float = lensRestPx * (1f - jelly * 0.55f) + lift.value * liftGrowthPx
 
         Box(
-            modifier = Modifier
+            modifier = modifier
                 .height(rowHeight)
-                .onGloballyPositioned { rowPos = it.positionInRoot() }
+                .onGloballyPositioned { rowPos = it.positionInRoot() },
         ) {
-            // The traveling glass pane = the lens itself.
+            // The bar glass: full-width pane; the goo selection lives inside
+            // the shader (lens capsule + finger pill, smooth-min merged).
             Box(
                 modifier = Modifier
-                    .offset {
-                        IntOffset(
-                            lensLeft().roundToInt(),
-                            ((rowHeightPx - lensHeight()) / 2f).roundToInt(),
-                        )
-                    }
-                    .size(
-                        with(density) { lensWidth().toDp() },
-                        with(density) { lensHeight().toDp() },
-                    )
+                    .fillMaxSize()
                     .liquidGlass(
                         backdrop = backdrop,
-                        paneOffsetInRoot = {
-                            rowPos + Offset(lensLeft(), (rowHeightPx - lensHeight()) / 2f)
-                        },
+                        paneOffsetInRoot = { rowPos },
                         rootOffsetInRoot = rootPos,
                         tint = glassTint,
                         saturation = glassSaturation,
-                        glowCenter = {
-                            Offset(glowX - lensLeft(), lensHeight() / 2f)
-                        },
+                        glowCenter = { Offset(glowX, rowHeightPx / 2f) },
                         glowStrength = { glow.value * 0.45f },
                         drag = { drag.value },
+                        gooLens = {
+                            val w = lensW()
+                            val h = lensH()
+                            GooPill(
+                                cx = lens.value * tabWidthPx + tabWidthPx / 2f,
+                                cy = rowHeightPx / 2f,
+                                halfSeg = maxOf(w / 2f - h / 2f, 0f),
+                                radius = h / 2f,
+                                tint = primary.copy(alpha = 0.16f + 0.10f * lift.value),
+                            )
+                        },
+                        gooDest = {
+                            if (lift.value > 0.05f) {
+                                val h = lensH() * 0.92f
+                                GooPill(
+                                    cx = (fingerIndex + 0.5f) * tabWidthPx,
+                                    cy = rowHeightPx / 2f,
+                                    halfSeg = maxOf(tabWidthPx * 0.31f - h / 2f, 0f),
+                                    radius = h / 2f,
+                                    tint = primary.copy(alpha = 0.10f),
+                                )
+                            } else null
+                        },
                     ),
             )
 
-            // Destination slots stay tappable through the row; the live one
-            // reads primary.
+            // Destinations: magnify under the selection ( _lensMagnify
+            // 0.16), tappable, with the drag/fling gesture on the whole row.
             Row(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(rowHeight)
+                    .fillMaxSize()
                     .pointerInput(tabs.size, tabWidthPx) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
@@ -346,10 +353,11 @@ private fun GlassNav(
                             var crossIndex = positionIndex(down.position.x)
                                 .roundToInt().coerceIn(0, tabs.size - 1)
 
+                            fingerIndex = crossIndex
                             lift.springTo(1f, 340f, 0.85f)
                             glow.springTo(1f, 260f, 0.9f)
                             drag.springTo(1f, 420f, 0.9f)
-                            glowX = down.position.x
+                            onGlow(down.position.x, rowHeightPx / 2f)
                             lens.springTo(crossIndex.toFloat(), TRAVEL_K, TRAVEL_Z)
 
                             val slop = viewConfiguration.touchSlop
@@ -363,13 +371,14 @@ private fun GlassNav(
                                 if (!isDrag && abs(pos.x - down.position.x) > slop) isDrag = true
                                 if (isDrag) {
                                     tracker.addPosition(change.uptimeMillis, pos)
+                                    onGlow(pos.x, rowHeightPx / 2f)
                                     drag.springTo(min(abs(lens.velocity) / 3f, 1f), 2000f, 1f)
-                                    glowX = pos.x
                                     val p = rubber(positionIndex(pos.x))
                                     lens.springTo(p, FOLLOW_K, FOLLOW_Z)
                                     val idx = p.roundToInt().coerceIn(0, tabs.size - 1)
                                     if (idx != crossIndex) {
                                         crossIndex = idx
+                                        fingerIndex = idx
                                         view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                                     }
                                 }
@@ -383,7 +392,7 @@ private fun GlassNav(
                             if (target != crossIndex) {
                                 view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                             }
-                            if (target != selected) onSelect(target)
+                            if (target != currentSelected) onSelect(target)
 
                             lens.springTo(target.toFloat(), TRAVEL_K, TRAVEL_Z)
                             lift.springTo(0f, 300f, 0.9f)
@@ -397,21 +406,28 @@ private fun GlassNav(
                     Column(
                         modifier = Modifier
                             .weight(1f)
-                            .fillMaxHeight(),
+                            .fillMaxHeight()
+                            .graphicsLayer {
+                                //  content under the lens
+                                // grows up to +16%.
+                                val d = abs(lens.value - i)
+                                val mag = 1f + 0.16f * (1f - min(1f, d * 1.6f))
+                                    .coerceIn(0f, 1f)
+                                scaleX = mag
+                                scaleY = mag
+                            },
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
                     ) {
                         Icon(
                             imageVector = tab.icon,
                             contentDescription = tab.label,
-                            tint = if (isLive) MiuixTheme.colorScheme.primary
-                            else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            tint = if (isLive) primary else dimColor,
                         )
                         Text(
                             text = tab.label,
                             fontSize = 11.sp,
-                            color = if (isLive) MiuixTheme.colorScheme.primary
-                            else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            color = if (isLive) primary else dimColor,
                         )
                     }
                 }
