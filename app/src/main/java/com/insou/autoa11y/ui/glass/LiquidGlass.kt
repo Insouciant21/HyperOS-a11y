@@ -23,13 +23,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toIntSize
 
 /**
- * Ultra-quality pill optics (ultra):
- *  - bar glass: circular-bevel rim refraction + haze frost + tint + rim
- *    highlight + iOS hairline, across the whole bar;
+ * Floating pill surface:
+ *  - bar glass: circular-bevel rim refraction + haze frost + tint + a subtle
+ *    edge highlight across the whole bar;
  *  - goo selection: the lens capsule and (while pressed) the finger pill are
  *    smooth-min merged into one liquid blob, tinted with the selection color
- *    and given its own bright rim — the liquid flow between destinations;
- *  - touch glow: gaussian light under the finger.
+ *    with a solid fill and no selection stroke;
+ *  - touch glow: soft gaussian light under the finger.
  * The backdrop is pre-frosted by a RenderEffect on the capture layer; the
  * shader refracts reads of that frosted texture.
  */
@@ -129,22 +129,13 @@ float4 main(float2 fragCoord) {
     gooMask *= 1.0 - smoothstep(-1.5, 1.5, dBar);
     col = mix(col, uLensTint.rgb, uLensTint.a * gooMask);
 
-    // Selection stroke: a thin bright line hugging the goo edge (CoolApk
-    // look) - brighter than the bar rim, narrow.
-    float gline = 1.0 - smoothstep(0.0, 3.0, abs(dGoo));
-    col += (uRim + 0.85) * gline * gooMask;
-    // Soft inner sheen just inside the stroke.
-    float gband = 1.0 - smoothstep(0.0, 9.0, dGoo);
-    col += (uRim * 0.55) * gband * gband * gooMask;
-
-    // Bar rim highlight, biased to the top edge; boosted while dragging.
+    // A narrow, quiet outer edge; the solid selection has no bright rim.
     float band = 1.0 - smoothstep(0.0, uRimW, barEdge);
     float topBias = clamp(0.5 - nBar.y * 0.5, 0.0, 1.0);
-    float bottomBias = clamp(0.5 + nBar.y * 0.5, 0.0, 1.0) * 0.35;
-    col += (uRim + uDrag * 0.5) * band * band * (topBias + bottomBias * 0.5);
+    col += uRim * band * band * (0.6 + topBias * 0.4);
 
-    // iOS 27 dark hairline right at the rim.
-    col *= 1.0 - 0.298 * (1.0 - smoothstep(0.0, uLine, barEdge));
+    // Fine dark hairline at the outside of the capsule.
+    col *= 1.0 - 0.15 * (1.0 - smoothstep(0.0, uLine, barEdge));
 
     // Touch glow: gaussian light under the finger.
     float gd = distance(uv, uGlowC);
