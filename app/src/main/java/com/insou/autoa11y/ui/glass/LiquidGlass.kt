@@ -45,6 +45,13 @@ uniform float uDisp;
 uniform float uPartReach;
 uniform float uPartHold;
 
+// Clamp samples to the layer's own bounds: reading past the recorded backdrop
+// yields transparent black, which the dispersion channels turn into a saturated
+// cyan/black band along the rim (uClamp does the same).
+float4 tap(float2 p) {
+    return content.eval(clamp(p, float2(0.5), uSize - 0.5));
+}
+
 float sdRoundBox(float2 p, float2 b, float r) {
     float2 q = abs(p) - b + r;
     return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
@@ -75,9 +82,9 @@ float4 main(float2 fragCoord) {
     // starting to close again past uPartHold.
     float part = 1.0 - smoothstep(uPartHold, uPartReach, edge);
     float3 col = float3(
-        content.eval(src + n * part * uDisp).r,
-        content.eval(src).g,
-        content.eval(src - n * part * uDisp).b
+        tap(src + n * part * uDisp).r,
+        tap(src).g,
+        tap(src - n * part * uDisp).b
     );
 
     float l = dot(col, float3(0.299, 0.587, 0.114));
