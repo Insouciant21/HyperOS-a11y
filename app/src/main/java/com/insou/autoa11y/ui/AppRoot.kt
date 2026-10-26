@@ -373,7 +373,7 @@ private fun GlassNav(
                         backdropOrigin = backdropOrigin,
                         gooDest = {
                             if (lift.value > 0.05f) {
-                                val h = lensH()
+                                val h = min(lensH(), rowHeightPx)
                                 GooPill(
                                     cx = (fingerIndex + 0.5f) * tabWidthPx,
                                     cy = rowHeightPx / 2f,

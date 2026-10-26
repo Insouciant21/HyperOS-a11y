@@ -124,6 +124,9 @@ float4 main(float2 fragCoord) {
         dGoo = smin(dGoo, dDest, 60.0 + clamp(gap, 0.0, 400.0) * 0.25);
     }
     float gooMask = 1.0 - smoothstep(-1.5, 1.5, dGoo);
+    // The goo renders only inside the bar: gate its mask by the bar's own
+    // coverage so a swollen blob never paints past the pill onto the page.
+    gooMask *= 1.0 - smoothstep(-1.5, 1.5, dBar);
     col = mix(col, uLensTint.rgb, uLensTint.a * gooMask);
 
     // Bright rim around the goo blob, lit all around (selection pill edge).
@@ -143,13 +146,12 @@ float4 main(float2 fragCoord) {
     float gd = distance(uv, uGlowC);
     col += uGlowS * exp(-(gd * gd) / (2.0 * uGlowR * uGlowR));
 
-    // Coverage = bar shape UNION goo selection: the goo blob is part of the
-    // glass, so where it swells past the bar's edge (press lift) the glass
-    // stays opaque instead of punching a hole to the page background.
-    float alpha = max(
-        1.0 - smoothstep(-1.0, 1.0, dBar),
-        gooMask
-    );
+    // Coverage = bar shape; the goo is already gated to stay inside it. The
+    // immediate edge band keeps the union so a press-lifted blob swelling
+    // past the rim doesn't punch a hole, without growing a trailing tail.
+    float barAlpha = 1.0 - smoothstep(-1.0, 1.0, dBar);
+    float edgeBand = smoothstep(2.0, -2.0, dBar);
+    float alpha = max(barAlpha, gooMask * edgeBand);
     return float4(col * alpha, alpha);
 }
 """
