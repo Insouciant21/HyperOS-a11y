@@ -98,9 +98,11 @@ fun AppRoot() {
     // Liquid glass lens on a floating pill bar.
     val dark = isSystemInDarkTheme()
     // Pill tints: dark glass tint α0.48, light F4F4F4 α0.576.
-    val glassTint = if (dark) Color(0xFF20222A).copy(alpha = 0.48f)
-    else Color(0xFFF4F4F4).copy(alpha = 0.576f)
-    val glassSaturation = if (dark) 1.925f else 2.1f
+    // CoolApk/FlClash pill reads DARK: content behind shows as a dimmed
+    // silhouette, not a bright wash.
+    val glassTint = if (dark) Color(0xFF17181D).copy(alpha = 0.66f)
+    else Color(0xFFE8EAEE).copy(alpha = 0.60f)
+    val glassSaturation = if (dark) 1.2f else 1.3f
 
     val backdrop = rememberGlassBackdrop()
     var rootPos by remember { mutableStateOf(Offset.Zero) }
@@ -412,9 +414,8 @@ private fun GlassNav(
                         glowReach = { 120.dp * (1f + 0.6f * (1f - glow.value)) },
                         drag = { drag.value },
                         gooLens = {
-                            // Inset the capsule within its slot: a goo blob
-                            // hugging the bar's rounded ends picks up the end
-                            // cap's dark falloff and reads as a smudge.
+                            // CoolApk selection = a stroke capsule: nearly no
+                            // fill, the rim line carries the shape.
                             val w = min(lensW(), tabWidthPx - gooInsetPx * 2)
                             val h = min(lensH(), rowHeightPx - gooInsetPx)
                             val cx = (lens.value * tabWidthPx + tabWidthPx / 2f)
@@ -424,7 +425,7 @@ private fun GlassNav(
                                 cy = rowHeightPx / 2f,
                                 halfSeg = maxOf(w / 2f - h / 2f, 0f),
                                 radius = h / 2f,
-                                tint = primary.copy(alpha = 0.16f + 0.10f * lift.value),
+                                tint = primary.copy(alpha = 0.06f + 0.06f * lift.value),
                             )
                         },
                         backdropOrigin = backdropOrigin,
