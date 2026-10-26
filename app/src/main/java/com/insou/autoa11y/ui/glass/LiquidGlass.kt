@@ -111,18 +111,20 @@ float4 main(float2 fragCoord) {
     col = mix(col, uTint.rgb, uTint.a);
 
     // Goo selection: lens capsule merged (smooth-min) with the finger pill.
-    float dLens = sdPill(p, uLens.xy, uLens.z, uLens.w);
-    float gooEdge = -dLens;
+    // dGoo is the blob SDF (negative inside); the mask fills the inside and
+    // the rim band hugs the boundary. The pills arrive in pane-local
+    // coordinates (0..uSize), so evaluate the SDF against uv — NOT against
+    // the centered p, which would shift the blob half a pane to the right.
+    float dGoo = sdPill(uv, uLens.xy, uLens.z, uLens.w);
     if (uDestP > 0.003) {
-        float dDest = sdPill(p, uDest.xy, uDest.z, uDest.w);
-        float dGoo = smin(dLens, dDest, 60.0);
-        gooEdge = -dGoo;
+        float dDest = sdPill(uv, uDest.xy, uDest.z, uDest.w);
+        dGoo = smin(dGoo, dDest, 60.0);
     }
-    float gooMask = 1.0 - smoothstep(-1.5, 1.5, gooEdge);
+    float gooMask = 1.0 - smoothstep(-1.5, 1.5, dGoo);
     col = mix(col, uLensTint.rgb, uLensTint.a * gooMask);
 
     // Bright rim around the goo blob, lit all around (selection pill edge).
-    float gband = 1.0 - smoothstep(0.0, 5.0, gooEdge);
+    float gband = 1.0 - smoothstep(0.0, 5.0, abs(dGoo));
     col += (uRim + 0.45) * gband * gband * gooMask;
 
     // Bar rim highlight, biased to the top edge; boosted while dragging.
@@ -276,7 +278,7 @@ fun Modifier.liquidGlass(
 
             drawLayer(work)
             drawContent()
-        }
+            }
     )
 
 }
