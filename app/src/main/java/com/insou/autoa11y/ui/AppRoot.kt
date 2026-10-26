@@ -252,6 +252,7 @@ private fun GlassNav(
         val lens = remember { FcSpring(selected.toFloat()) }
         val lift = remember { FcSpring(0f) }
         val glow = remember { FcSpring(0f) }
+        val drag = remember { FcSpring(0f) }
         var jelly by remember { mutableFloatStateOf(0f) }
         var liveIndex by remember { mutableIntStateOf(selected) }
         var rowPos by remember { mutableStateOf(Offset.Zero) }
@@ -268,9 +269,10 @@ private fun GlassNav(
                         lens.step(dt / 3f)
                         lift.step(dt / 3f)
                         glow.step(dt / 3f)
+                        drag.step(dt / 3f)
                     }
-                    val jTarget = min(abs(lens.velocity) / 5f, 1f) * 0.30f
-                    jelly += (jTarget - jelly) * min(1f, dt * 14f)
+                    val jTarget = min(abs(lens.velocity) / 3f, 1f) * 0.6f
+                    jelly += (jTarget - jelly) * min(1f, dt * 20f)
                     liveIndex = lens.value.roundToInt().coerceIn(0, tabs.size - 1)
                 }
                 last = now
@@ -325,6 +327,7 @@ private fun GlassNav(
                             Offset(glowX - lensLeft(), lensHeight() / 2f)
                         },
                         glowStrength = { glow.value * 0.45f },
+                        drag = { drag.value },
                     ),
             )
 
@@ -345,6 +348,7 @@ private fun GlassNav(
 
                             lift.springTo(1f, 340f, 0.85f)
                             glow.springTo(1f, 260f, 0.9f)
+                            drag.springTo(1f, 420f, 0.9f)
                             glowX = down.position.x
                             lens.springTo(crossIndex.toFloat(), TRAVEL_K, TRAVEL_Z)
 
@@ -359,6 +363,7 @@ private fun GlassNav(
                                 if (!isDrag && abs(pos.x - down.position.x) > slop) isDrag = true
                                 if (isDrag) {
                                     tracker.addPosition(change.uptimeMillis, pos)
+                                    drag.springTo(min(abs(lens.velocity) / 3f, 1f), 2000f, 1f)
                                     glowX = pos.x
                                     val p = rubber(positionIndex(pos.x))
                                     lens.springTo(p, FOLLOW_K, FOLLOW_Z)
@@ -383,6 +388,7 @@ private fun GlassNav(
                             lens.springTo(target.toFloat(), TRAVEL_K, TRAVEL_Z)
                             lift.springTo(0f, 300f, 0.9f)
                             glow.springTo(0f, 90f, 1f)
+                            drag.springTo(0f, 120f, 1f)
                         }
                     },
             ) {

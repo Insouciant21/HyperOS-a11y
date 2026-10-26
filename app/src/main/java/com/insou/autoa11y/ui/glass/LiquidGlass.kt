@@ -44,6 +44,7 @@ uniform float uRim;
 uniform float uRimW;
 uniform float4 uTint;
 uniform float uLine;
+uniform float uDrag;   // 0..1, rises with lens speed while dragging
 // Touch glow: center (pane px), strength 0..1, reach sigma (px).
 uniform float2 uGlowC;
 uniform float uGlowS;
@@ -91,11 +92,12 @@ float4 main(float2 fragCoord) {
     float gd = distance(uv, uGlowC);
     col += uGlowS * exp(-(gd * gd) / (2.0 * uGlowR * uGlowR));
 
-    // Rim highlight just inside the line, biased to the top edge.
+    // Rim highlight just inside the line, biased to the top edge; boosted
+    // while dragging (rim reads much brighter mid-drag).
     float band = 1.0 - smoothstep(0.0, uRimW, edge);
     float topBias = clamp(0.5 - n.y * 0.5, 0.0, 1.0);
     float bottomBias = clamp(0.5 + n.y * 0.5, 0.0, 1.0) * 0.35;
-    col += uRim * band * band * (topBias + bottomBias * 0.5);
+    col += (uRim + uDrag * 0.5) * band * band * (topBias + bottomBias * 0.5);
 
     // iOS 27 dark hairline right at the rim.
     col *= 1.0 - 0.298 * (1.0 - smoothstep(0.0, uLine, edge));
@@ -137,6 +139,8 @@ fun Modifier.liquidGlass(
     glowCenter: () -> Offset = { Offset(-1f, -1f) },
     glowStrength: () -> Float = { 0f },
     glowReach: Dp = 120.dp,
+    // 0..1 while the lens is being dragged: rim boost + dispersion.
+    drag: () -> Float = { 0f },
 ): Modifier {
     val shader = remember { RuntimeShader(LENS_AGSL) }
     val work = rememberGraphicsLayer()
@@ -169,6 +173,7 @@ fun Modifier.liquidGlass(
         shader.setFloatUniform("uGlowC", glowCenter().x, glowCenter().y)
         shader.setFloatUniform("uGlowS", glowStrength())
         shader.setFloatUniform("uGlowR", with(density) { glowReach.toPx() })
+        shader.setFloatUniform("uDrag", drag())
 
         //  pill pipeline: the captured backdrop is gaussian-frosted
         // (sigma 15.6 × haze 0.72), then the shader refracts reads of that
