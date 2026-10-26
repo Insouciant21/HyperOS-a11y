@@ -274,6 +274,7 @@ private fun GlassNav(
         val rowWidthPx = with(density) { rowWidth.toPx() }
         val rowHeightPx = with(density) { rowHeight.toPx() }
         val lensRestPx = with(density) { 46.dp.toPx() }
+        val gooInsetPx = with(density) { 8.dp.toPx() }
         val liftGrowthPx = with(density) { 6.dp.toPx() }
 
         val primary = MiuixTheme.colorScheme.primary
@@ -336,7 +337,11 @@ private fun GlassNav(
         fun lensH(): Float = lensRestPx * (1f - jelly * 0.55f) + lift.value * liftGrowthPx
 
         Box(
-            modifier = modifier
+            // modifier (outer padding) is already consumed by
+            // BoxWithConstraints above - applying it here again would double
+            // the insets and desync the goo grid from the content slots.
+            modifier = Modifier
+                .fillMaxWidth()
                 .height(rowHeight)
                 .onGloballyPositioned {
                     rowPos = it.positionInRoot()
@@ -361,10 +366,15 @@ private fun GlassNav(
                         glowReach = { 120.dp * (1f + 0.6f * (1f - glow.value)) },
                         drag = { drag.value },
                         gooLens = {
-                            val w = lensW()
-                            val h = lensH()
+                            // Inset the capsule within its slot: a goo blob
+                            // hugging the bar's rounded ends picks up the end
+                            // cap's dark falloff and reads as a smudge.
+                            val w = min(lensW(), tabWidthPx - gooInsetPx * 2)
+                            val h = min(lensH(), rowHeightPx - gooInsetPx)
+                            val cx = (lens.value * tabWidthPx + tabWidthPx / 2f)
+                                .coerceIn(w / 2f + gooInsetPx, rowWidthPx - w / 2f - gooInsetPx)
                             GooPill(
-                                cx = lens.value * tabWidthPx + tabWidthPx / 2f,
+                                cx = cx,
                                 cy = rowHeightPx / 2f,
                                 halfSeg = maxOf(w / 2f - h / 2f, 0f),
                                 radius = h / 2f,
