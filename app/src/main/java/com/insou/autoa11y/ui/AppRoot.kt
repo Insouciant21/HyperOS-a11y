@@ -89,9 +89,9 @@ fun AppRoot() {
     )
     var selected by rememberSaveable { mutableIntStateOf(0) }
 
-    // -style liquid glass lens on a floating pill bar.
+    // Liquid glass lens on a floating pill bar.
     val dark = isSystemInDarkTheme()
-    //  tints: dark glass tint α0.48, light F4F4F4 α0.576.
+    // Pill tints: dark glass tint α0.48, light F4F4F4 α0.576.
     val glassTint = if (dark) Color(0xFF20222A).copy(alpha = 0.48f)
     else Color(0xFFF4F4F4).copy(alpha = 0.576f)
     val glassSaturation = if (dark) 1.925f else 2.1f
@@ -122,8 +122,7 @@ fun AppRoot() {
                 AnimatedContent(
                     targetState = selected,
                     transitionSpec = {
-                        // Directional shared-axis slide, as 's
-                        // PageView animateToPage (300ms easeOut).
+                        // Directional shared-axis slide, native tab-switch rhythm (300ms easeOut).
                         val dir = if (targetState > initialState) 1 else -1
                         (slideInHorizontally(tween(300, easing = androidx.compose.animation.core.EaseOut)) { dir * it / 4 } +
                             fadeIn(tween(220))) togetherWith
@@ -199,7 +198,7 @@ private fun Banner(message: String, action: String, onClick: () -> Unit) {
     }
 }
 
-/** A frame-stepped physical spring with exposed velocity (_Spring). */
+/** A frame-stepped physical spring with exposed velocity (physical spring). */
 private class FcSpring(initial: Float) {
     var value by mutableFloatStateOf(initial)
     var velocity by mutableFloatStateOf(0f)
@@ -233,7 +232,7 @@ private const val TRAVEL_K = 380f
 private const val TRAVEL_Z = 0.78f
 
 /**
- *  floating nav bar ultra port: one full-width glass bar (pill
+ * Ultra floating navigation bar: one full-width glass bar (pill
  * optics) whose shader draws the goo selection — a capsule that springs
  * between destinations, merging liquid-like with the finger pill while
  * pressed. Destinations magnify under the selection and swell under a press.
@@ -361,7 +360,7 @@ private fun GlassNav(
                     ),
             )
 
-            // Destinations: magnify under the selection ( _lensMagnify
+            // Destinations: magnify under the selection (_lensMagnify
             // 0.16), tappable, with the drag/fling gesture on the whole row.
             Row(
                 modifier = Modifier
@@ -430,7 +429,7 @@ private fun GlassNav(
                             .weight(1f)
                             .fillMaxHeight()
                             .graphicsLayer {
-                                //  content under the lens
+                                // Content under the lens
                                 // grows up to +16%; a press adds ElasticPress
                                 // swell on the touched destination.
                                 val d = abs(lens.value - i)

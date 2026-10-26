@@ -21,8 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toIntSize
 
 /**
- * Ultra-quality pill optics, ported from dock (LiquidGlassStyle.pill
- * at LiquidGlassQuality.ultra):
+ * Ultra-quality pill optics (ultra):
  *  - bar glass: circular-bevel rim refraction + haze frost + tint + rim
  *    highlight + iOS hairline, across the whole bar;
  *  - goo selection: the lens capsule and (while pressed) the finger pill are
@@ -223,7 +222,7 @@ fun Modifier.liquidGlass(
             shader.setFloatUniform("uDestP", 0f)
         }
 
-        //  pill pipeline: frosted backdrop first (gaussian), then the
+        // Pill pipeline: frosted backdrop first (gaussian), then the
         // optics shader refracts reads of the frosted texture.
         val frostPx = with(density) { hazeSigma.toPx() }.coerceAtLeast(0.1f)
         val runtime = RenderEffect.createRuntimeShaderEffect(shader, "content")
