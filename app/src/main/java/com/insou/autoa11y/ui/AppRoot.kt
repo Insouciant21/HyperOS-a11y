@@ -271,6 +271,7 @@ private fun GlassNav(
         val rowHeight = 64.dp
         val tabWidth = rowWidth / tabs.size
         val tabWidthPx = with(density) { tabWidth.toPx() }
+        val rowWidthPx = with(density) { rowWidth.toPx() }
         val rowHeightPx = with(density) { rowHeight.toPx() }
         val lensRestPx = with(density) { 46.dp.toPx() }
         val liftGrowthPx = with(density) { 6.dp.toPx() }
@@ -374,10 +375,19 @@ private fun GlassNav(
                         gooDest = {
                             if (lift.value > 0.05f) {
                                 val h = min(lensH(), rowHeightPx)
+                                // FlClash goo flow: the finger pill stretches
+                                // toward the lens as the gap widens, so the
+                                // bridge tapers smoothly instead of pinching.
+                                val gap = abs(lens.value - fingerIndex) * tabWidthPx
+                                val stretch = min(gap, tabWidthPx * 0.9f) * 0.55f
+                                val w = tabWidthPx * 0.62f + stretch
+                                val cxDir = if (lens.value >= fingerIndex) -1f else 1f
+                                val cx = (fingerIndex + 0.5f) * tabWidthPx +
+                                    cxDir * stretch / 2f
                                 GooPill(
-                                    cx = (fingerIndex + 0.5f) * tabWidthPx,
+                                    cx = cx.coerceIn(w / 2f, rowWidthPx - w / 2f),
                                     cy = rowHeightPx / 2f,
-                                    halfSeg = maxOf(tabWidthPx * 0.31f - h / 2f, 0f),
+                                    halfSeg = maxOf(w / 2f - h / 2f, 0f),
                                     radius = h / 2f,
                                     tint = primary.copy(alpha = 0.10f),
                                 )
