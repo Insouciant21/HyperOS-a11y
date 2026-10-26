@@ -322,7 +322,6 @@ private fun GlassNav(
         val rowWidthPx = with(density) { rowWidth.toPx() }
         val rowHeightPx = with(density) { rowHeight.toPx() }
         val lensRestPx = with(density) { 46.dp.toPx() }
-        val gooInsetPx = with(density) { 8.dp.toPx() }
         val liftGrowthPx = with(density) { 6.dp.toPx() }
 
         val primary = MiuixTheme.colorScheme.primary
@@ -415,11 +414,13 @@ private fun GlassNav(
                         drag = { drag.value },
                         gooLens = {
                             // CoolApk selection = a stroke capsule: nearly no
-                            // fill, the rim line carries the shape.
-                            val w = min(lensW(), tabWidthPx - gooInsetPx * 2)
-                            val h = min(lensH(), rowHeightPx - gooInsetPx)
+                            // fill, the rim line carries the shape. FlClash
+                            // _lensRect: the lens is slot-WIDE (overhang), so
+                            // the stroke wraps the icon+label tightly.
+                            val w = min(lensW(), tabWidthPx)
+                            val h = min(lensH(), rowHeightPx)
                             val cx = (lens.value * tabWidthPx + tabWidthPx / 2f)
-                                .coerceIn(w / 2f + gooInsetPx, rowWidthPx - w / 2f - gooInsetPx)
+                                .coerceIn(w / 2f, rowWidthPx - w / 2f)
                             GooPill(
                                 cx = cx,
                                 cy = rowHeightPx / 2f,
@@ -437,7 +438,7 @@ private fun GlassNav(
                                 // bridge tapers smoothly instead of pinching.
                                 val gap = abs(lens.value - fingerIndex) * tabWidthPx
                                 val stretch = min(gap, tabWidthPx * 0.9f) * 0.55f
-                                val w = tabWidthPx * 0.62f + stretch
+                                val w = tabWidthPx + stretch
                                 val cxDir = if (lens.value >= fingerIndex) -1f else 1f
                                 val cx = (fingerIndex + 0.5f) * tabWidthPx +
                                     cxDir * stretch / 2f
